@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2010-2012 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -39,10 +39,9 @@
  */
 package org.glassfish.jersey.message.internal;
 
+import javax.ws.rs.core.NewCookie;
 
 import javax.inject.Singleton;
-
-import javax.ws.rs.core.NewCookie;
 
 import org.glassfish.jersey.internal.LocalizationMessages;
 import org.glassfish.jersey.spi.HeaderDelegateProvider;
@@ -59,16 +58,16 @@ import static org.glassfish.jersey.message.internal.Utils.throwIllegalArgumentEx
 public class NewCookieProvider implements HeaderDelegateProvider<NewCookie> {
 
     @Override
-    public boolean supports(Class<?> type) {
+    public boolean supports(final Class<?> type) {
         return type == NewCookie.class;
     }
 
     @Override
-    public String toString(NewCookie cookie) {
+    public String toString(final NewCookie cookie) {
 
         throwIllegalArgumentExceptionIfNull(cookie, LocalizationMessages.NEW_COOKIE_IS_NULL());
 
-        StringBuilder b = new StringBuilder();
+        final StringBuilder b = new StringBuilder();
 
         b.append(cookie.getName()).append('=');
         StringBuilderUtils.appendQuotedIfWhitespace(b, cookie.getValue());
@@ -94,11 +93,19 @@ public class NewCookieProvider implements HeaderDelegateProvider<NewCookie> {
         if (cookie.isSecure()) {
             b.append(";Secure");
         }
+        if (cookie.isHttpOnly()) {
+            b.append(";HttpOnly");
+        }
+        if (cookie.getExpiry() != null) {
+            b.append(";Expires=");
+            b.append(HttpDateFormat.getPreferredDateFormat().format(cookie.getExpiry()));
+        }
+
         return b.toString();
     }
 
     @Override
-    public NewCookie fromString(String header) {
+    public NewCookie fromString(final String header) {
         throwIllegalArgumentExceptionIfNull(header, LocalizationMessages.NEW_COOKIE_IS_NULL());
         return HttpHeaderReader.readNewCookie(header);
     }

@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -50,11 +50,13 @@ import javax.ws.rs.core.Feature;
 
 import org.glassfish.jersey.CommonProperties;
 import org.glassfish.jersey.ExtendedConfig;
+import org.glassfish.jersey.client.internal.LocalizationMessages;
 import org.glassfish.jersey.client.spi.Connector;
+import org.glassfish.jersey.client.spi.ConnectorProvider;
 import org.glassfish.jersey.internal.inject.Injections;
 import org.glassfish.jersey.internal.inject.JerseyClassAnalyzer;
 import org.glassfish.jersey.internal.inject.ProviderBinder;
-import org.glassfish.jersey.internal.util.PropertiesHelper;
+import org.glassfish.jersey.internal.util.collection.LazyValue;
 import org.glassfish.jersey.internal.util.collection.Value;
 import org.glassfish.jersey.internal.util.collection.Values;
 import org.glassfish.jersey.model.internal.CommonConfig;
@@ -73,7 +75,7 @@ import org.glassfish.hk2.utilities.binding.AbstractBinder;
  * @author Martin Matula (martin.matula at oracle.com)
  * @author Libor Kramolis (libor.kramolis at oracle.com)
  */
-public class ClientConfig implements Configurable<ClientConfig>, Configuration {
+public class ClientConfig implements Configurable<ClientConfig>, ExtendedConfig {
     /**
      * Internal configuration state.
      */
@@ -82,7 +84,7 @@ public class ClientConfig implements Configurable<ClientConfig>, Configuration {
     /**
      * Default encapsulation of the internal configuration state.
      */
-    private static class State implements Configurable<State>, Configuration {
+    private static class State implements Configurable<State>, ExtendedConfig {
 
         /**
          * Strategy that returns the same state instance.
@@ -108,10 +110,10 @@ public class ClientConfig implements Configurable<ClientConfig>, Configuration {
         private volatile StateChangeStrategy strategy;
         private final CommonConfig commonConfig;
         private final JerseyClient client;
-        private Connector connector;
+        private volatile ConnectorProvider connectorProvider;
 
 
-        private final Value<ClientRuntime> runtime = Values.lazy(new Value<ClientRuntime>() {
+        private final LazyValue<ClientRuntime> runtime = Values.lazy(new Value<ClientRuntime>() {
             @Override
             public ClientRuntime get() {
                 return initRuntime();
@@ -129,7 +131,7 @@ public class ClientConfig implements Configurable<ClientConfig>, Configuration {
              *
              * @param state configuration state to be mutated.
              * @return state instance that will be mutated and returned from the
-             *         invoked configuration state mutator method.
+             * invoked configuration state mutator method.
              */
             public State onChange(final State state);
         }
@@ -141,10 +143,10 @@ public class ClientConfig implements Configurable<ClientConfig>, Configuration {
          * @param client bound parent Jersey client.
          */
         State(JerseyClient client) {
+            this.strategy = IDENTITY;
             this.commonConfig = new CommonConfig(RuntimeType.CLIENT, ComponentBag.EXCLUDE_EMPTY);
             this.client = client;
-            this.strategy = IDENTITY;
-            this.connector = null;
+            this.connectorProvider = new HttpUrlConnectorProvider();
         }
 
         /**
@@ -155,10 +157,10 @@ public class ClientConfig implements Configurable<ClientConfig>, Configuration {
          * @param original configuration strategy to be copied.
          */
         private State(JerseyClient client, State original) {
-            this.client = client;
             this.strategy = IDENTITY;
+            this.client = client;
             this.commonConfig = new CommonConfig(original.commonConfig);
-            this.connector = original.connector;
+            this.connectorProvider = original.connectorProvider;
         }
 
         /**
@@ -263,14 +265,22 @@ public class ClientConfig implements Configurable<ClientConfig>, Configuration {
             return state;
         }
 
-        State setConnector(Connector connector) {
+        State connectorProvider(ConnectorProvider provider) {
+            if (provider == null) {
+                throw new NullPointerException(LocalizationMessages.NULL_CONNECTOR_PROVIDER());
+            }
             final State state = strategy.onChange(this);
-            state.connector = connector;
+            state.connectorProvider = provider;
             return state;
         }
 
         Connector getConnector() {
-            return connector;
+            // Get the connector only if the runtime has been initialized.
+            return (runtime.isInitialized()) ? runtime.get().getConnector() : null;
+        }
+
+        ConnectorProvider getConnectorProvider() {
+            return connectorProvider;
         }
 
         JerseyClient getClient() {
@@ -300,6 +310,11 @@ public class ClientConfig implements Configurable<ClientConfig>, Configuration {
         @Override
         public Collection<String> getPropertyNames() {
             return commonConfig.getConfiguration().getPropertyNames();
+        }
+
+        @Override
+        public boolean isProperty(String name) {
+            return commonConfig.getConfiguration().isProperty(name);
         }
 
         @Override
@@ -337,9 +352,22 @@ public class ClientConfig implements Configurable<ClientConfig>, Configuration {
             return commonConfig.getConfiguration().getInstances();
         }
 
+        public void configureAutoDiscoverableProviders(ServiceLocator locator) {
+            commonConfig.configureAutoDiscoverableProviders(locator);
+        }
+
+        public void configureMetaProviders(ServiceLocator locator) {
+            commonConfig.configureMetaProviders(locator);
+        }
+
+        public ComponentBag getComponentBag() {
+            return commonConfig.getComponentBag();
+        }
+
         /**
          * Initialize the newly constructed client instance.
          */
+        @SuppressWarnings("MethodOnlyUsedFromInnerClass")
         private ClientRuntime initRuntime() {
             /**
              * Ensure that any attempt to add a new provider, feature, binder or modify the connector
@@ -347,27 +375,26 @@ public class ClientConfig implements Configurable<ClientConfig>, Configuration {
              */
             markAsShared();
 
-            final CommonConfig runtimeConfig = new CommonConfig(this.commonConfig);
+            final State runtimeCfgState = this.copy();
+            runtimeCfgState.markAsShared();
 
-            final ServiceLocator locator = Injections.createLocator(
-                    new ClientBinder(runtimeConfig.getProperties(), RuntimeType.CLIENT));
+            final ServiceLocator locator = Injections.createLocator(new ClientBinder(runtimeCfgState.getProperties()));
             locator.setDefaultClassAnalyzerName(JerseyClassAnalyzer.NAME);
 
             // AutoDiscoverable.
-            if (!PropertiesHelper.getValue(runtimeConfig.getProperties(), RuntimeType.CLIENT,
+            if (!CommonProperties.getValue(runtimeCfgState.getProperties(), RuntimeType.CLIENT,
                     CommonProperties.FEATURE_AUTO_DISCOVERY_DISABLE, Boolean.FALSE, Boolean.class)) {
-                runtimeConfig.configureAutoDiscoverableProviders(locator);
+                runtimeCfgState.configureAutoDiscoverableProviders(locator);
             }
 
             // Configure binders and features.
-            runtimeConfig.configureMetaProviders(locator);
+            runtimeCfgState.configureMetaProviders(locator);
 
             // Bind configuration.
-            final ExtendedConfig configuration = runtimeConfig.getConfiguration();
             final AbstractBinder configBinder = new AbstractBinder() {
                 @Override
                 protected void configure() {
-                    bind(configuration).to(Configuration.class);
+                    bind(runtimeCfgState).to(Configuration.class);
                 }
             };
             final DynamicConfiguration dc = Injections.getConfiguration(locator);
@@ -375,8 +402,10 @@ public class ClientConfig implements Configurable<ClientConfig>, Configuration {
             dc.commit();
 
             // Bind providers.
-            ProviderBinder.bindProviders(runtimeConfig.getComponentBag(), RuntimeType.CLIENT, null, locator);
+            ProviderBinder.bindProviders(runtimeCfgState.getComponentBag(), RuntimeType.CLIENT, null, locator);
 
+            final ClientConfig configuration = new ClientConfig(runtimeCfgState);
+            final Connector connector = connectorProvider.getConnector(client, configuration);
             final ClientRuntime crt = new ClientRuntime(configuration, connector, locator);
             client.addListener(new JerseyClient.LifecycleListener() {
                 @Override
@@ -401,16 +430,15 @@ public class ClientConfig implements Configurable<ClientConfig>, Configuration {
 
             if (client != null ? !client.equals(state.client) : state.client != null) return false;
             if (!commonConfig.equals(state.commonConfig)) return false;
-            if (connector != null ? !connector.equals(state.connector) : state.connector != null) return false;
-
-            return true;
+            return connectorProvider == null ? state.connectorProvider == null
+                    : connectorProvider.equals(state.connectorProvider);
         }
 
         @Override
         public int hashCode() {
             int result = commonConfig.hashCode();
             result = 31 * result + (client != null ? client.hashCode() : 0);
-            result = 31 * result + (connector != null ? connector.hashCode() : 0);
+            result = 31 * result + (connectorProvider != null ? connectorProvider.hashCode() : 0);
             return result;
         }
     }
@@ -455,7 +483,6 @@ public class ClientConfig implements Configurable<ClientConfig>, Configuration {
      */
     ClientConfig(JerseyClient parent) {
         this.state = new State(parent);
-        this.state.setConnector(new HttpUrlConnector(this.state));
     }
 
     /**
@@ -468,12 +495,8 @@ public class ClientConfig implements Configurable<ClientConfig>, Configuration {
     ClientConfig(JerseyClient parent, Configuration that) {
         if (that instanceof ClientConfig) {
             state = ((ClientConfig) that).state.copy(parent);
-            if (state.getConnector() == null) {
-                state.setConnector(new HttpUrlConnector(state));
-            }
         } else {
             state = new State(parent);
-            state.setConnector(new HttpUrlConnector(state));
             state.loadFrom(that);
         }
     }
@@ -515,9 +538,6 @@ public class ClientConfig implements Configurable<ClientConfig>, Configuration {
     public ClientConfig loadFrom(Configuration config) {
         if (config instanceof ClientConfig) {
             state = ((ClientConfig) config).state.copy();
-            if (state.getConnector() == null) {
-                state.setConnector(new HttpUrlConnector(state));
-            }
         } else {
             state.loadFrom(config);
         }
@@ -604,6 +624,11 @@ public class ClientConfig implements Configurable<ClientConfig>, Configuration {
     }
 
     @Override
+    public boolean isProperty(String name) {
+        return state.isProperty(name);
+    }
+
+    @Override
     public boolean isEnabled(Feature feature) {
         return state.isEnabled(feature);
     }
@@ -639,13 +664,21 @@ public class ClientConfig implements Configurable<ClientConfig>, Configuration {
     }
 
     /**
-     * Set Jersey client transport connector.
+     * Register a custom Jersey client connector provider.
+     * <p>
+     * The registered {@code ConnectorProvider} instance will provide a
+     * Jersey client {@link org.glassfish.jersey.client.spi.Connector}
+     * for the {@link org.glassfish.jersey.client.JerseyClient} instance
+     * created with this client configuration.
+     * </p>
      *
-     * @param connector client transport connector.
+     * @param connectorProvider custom connector provider. Must not be {@code null}.
      * @return this client config instance.
+     * @throws java.lang.NullPointerException in case the {@code connectorProvider} is {@code null}.
+     * @since 2.5
      */
-    public ClientConfig connector(Connector connector) {
-        state = state.setConnector(connector);
+    public ClientConfig connectorProvider(ConnectorProvider connectorProvider) {
+        state = state.connectorProvider(connectorProvider);
         return this;
     }
 
@@ -658,6 +691,20 @@ public class ClientConfig implements Configurable<ClientConfig>, Configuration {
      */
     public Connector getConnector() {
         return state.getConnector();
+    }
+
+    /**
+     * Get the client transport connector provider.
+     *
+     * If no custom connector provider has been set,
+     * {@link org.glassfish.jersey.client.HttpUrlConnectorProvider default connector provider}
+     * instance is returned.
+     *
+     * @return configured client transport connector provider.
+     * @since 2.5
+     */
+    public ConnectorProvider getConnectorProvider() {
+        return state.getConnectorProvider();
     }
 
     /**

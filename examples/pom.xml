@@ -3,7 +3,7 @@
 
     DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
 
-    Copyright (c) 2011-2013 Oracle and/or its affiliates. All rights reserved.
+    Copyright (c) 2011-2014 Oracle and/or its affiliates. All rights reserved.
 
     The contents of this file are subject to the terms of either the GNU
     General Public License Version 2 only ("GPL") or the Common Development
@@ -47,7 +47,7 @@
     <parent>
         <groupId>org.glassfish.jersey</groupId>
         <artifactId>project</artifactId>
-        <version>2.5-SNAPSHOT</version>
+        <version>2.9-SNAPSHOT</version>
     </parent>
 
     <groupId>org.glassfish.jersey.examples</groupId>
@@ -66,17 +66,22 @@
         <module>cdi-webapp</module>
         <module>clipboard</module>
         <module>clipboard-programmatic</module>
+        <module>declarative-linking</module>
         <module>entity-filtering</module>
+        <module>entity-filtering-selectable</module>
         <module>entity-filtering-security</module>
         <module>extended-wadl-webapp</module>
         <module>exception-mapping</module>
         <module>freemarker-webapp</module>
         <module>flight-mgmt-webapp</module>
+        <module>groovy</module>
         <module>helloworld</module>
         <module>helloworld-programmatic</module>
         <module>helloworld-pure-jax-rs</module>
         <module>helloworld-webapp</module>
         <module>helloworld-spring-webapp</module>
+        <module>helloworld-spring-annotations</module>
+        <module>http-patch</module>
         <module>http-trace</module>
         <module>https-clientserver-grizzly</module>
         <module>https-server-glassfish</module>
@@ -92,6 +97,7 @@
         <module>managed-client</module>
         <module>managed-client-webapp</module>
         <module>managed-client-simple-webapp</module>
+        <module>monitoring-webapp</module>
         <module>multipart-webapp</module>
         <module>osgi-helloworld-webapp</module>
         <module>osgi-http-service</module>
@@ -102,11 +108,14 @@
         <module>server-async-managed</module>
         <module>server-async-standalone</module>
         <module>server-sent-events</module>
+        <module>servlet3-webapp</module>
         <module>simple-console</module>
         <module>shortener-webapp</module>
+        <module>sparklines</module>
         <module>sse-item-store-webapp</module>
         <module>sse-twitter-aggregator</module>
         <module>system-properties-example</module>
+        <module>tone-generator</module>
         <module>webapp-example-parent</module>
         <module>xml-moxy</module>
     </modules>

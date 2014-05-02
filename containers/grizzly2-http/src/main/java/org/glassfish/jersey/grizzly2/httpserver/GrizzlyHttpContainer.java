@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -45,7 +45,6 @@ import java.lang.reflect.Type;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.security.Principal;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -53,11 +52,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import javax.inject.Inject;
-import javax.inject.Provider;
+import javax.ws.rs.core.Application;
 import javax.ws.rs.core.SecurityContext;
 import javax.ws.rs.core.UriBuilder;
 
+import javax.inject.Inject;
+import javax.inject.Provider;
+
+import org.glassfish.jersey.grizzly2.httpserver.internal.LocalizationMessages;
 import org.glassfish.jersey.internal.inject.ReferencingFactory;
 import org.glassfish.jersey.internal.util.ExtendedLogger;
 import org.glassfish.jersey.internal.util.collection.Ref;
@@ -67,16 +69,15 @@ import org.glassfish.jersey.server.ContainerException;
 import org.glassfish.jersey.server.ContainerRequest;
 import org.glassfish.jersey.server.ContainerResponse;
 import org.glassfish.jersey.server.ResourceConfig;
+import org.glassfish.jersey.server.ServerProperties;
 import org.glassfish.jersey.server.internal.ConfigHelper;
 import org.glassfish.jersey.server.spi.Container;
 import org.glassfish.jersey.server.spi.ContainerLifecycleListener;
 import org.glassfish.jersey.server.spi.ContainerResponseWriter;
 import org.glassfish.jersey.server.spi.RequestScopedInitializer;
 
-import org.glassfish.hk2.api.PerLookup;
 import org.glassfish.hk2.api.ServiceLocator;
 import org.glassfish.hk2.api.TypeLiteral;
-import org.glassfish.hk2.utilities.Binder;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 
 import org.glassfish.grizzly.CompletionHandler;
@@ -86,17 +87,28 @@ import org.glassfish.grizzly.http.server.Response;
 import org.glassfish.grizzly.utils.Charsets;
 
 /**
- * Grizzly 2 Jersey HTTP Container.
+ * Jersey {@code Container} implementation based on Grizzly {@link org.glassfish.grizzly.http.server.HttpHandler}.
  *
  * @author Jakub Podlesak (jakub.podlesak at oracle.com)
+ * @author Libor Kramolis (libor.kramolis at oracle.com)
+ * @author Marek Potociar (marek.potociar at oracle.com)
  */
 public final class GrizzlyHttpContainer extends HttpHandler implements Container {
 
     private static final ExtendedLogger logger =
             new ExtendedLogger(Logger.getLogger(GrizzlyHttpContainer.class.getName()), Level.FINEST);
 
-    private static final Type RequestTYPE = (new TypeLiteral<Ref<Request>>() {}).getType();
-    private static final Type ResponseTYPE = (new TypeLiteral<Ref<Response>>() {}).getType();
+    private static final Type RequestTYPE = (new TypeLiteral<Ref<Request>>() {
+    }).getType();
+    private static final Type ResponseTYPE = (new TypeLiteral<Ref<Response>>() {
+    }).getType();
+    /**
+     * Cached value of configuration property
+     * {@link org.glassfish.jersey.server.ServerProperties#RESPONSE_SET_STATUS_OVER_SEND_ERROR}.
+     * If {@code true} method {@link org.glassfish.grizzly.http.server.Response#setStatus} is used over
+     * {@link org.glassfish.grizzly.http.server.Response#sendError}.
+     */
+    private boolean configSetStatusOverSendError;
 
     /**
      * Referencing factory for Grizzly request.
@@ -120,19 +132,25 @@ public final class GrizzlyHttpContainer extends HttpHandler implements Container
 
     /**
      * An internal binder to enable Grizzly HTTP container specific types injection.
+     *
      * This binder allows to inject underlying Grizzly HTTP request and response instances.
+     * Note that since Grizzly {@code Request} class is not proxiable as it does not expose an empty constructor,
+     * the injection of Grizzly request instance into singleton JAX-RS and Jersey providers is only supported via
+     * {@link javax.inject.Provider injection provider}.
      */
-    private static class GrizzlyBinder extends AbstractBinder {
+    static class GrizzlyBinder extends AbstractBinder {
 
         @Override
         protected void configure() {
-            bindFactory(GrizzlyRequestReferencingFactory.class).to(Request.class).in(PerLookup.class);
-            bindFactory(ReferencingFactory.<Request>referenceFactory()).to(new TypeLiteral<Ref<Request>>() {
-            }).in(RequestScoped.class);
+            bindFactory(GrizzlyRequestReferencingFactory.class).to(Request.class)
+                    .proxy(false).in(RequestScoped.class);
+            bindFactory(ReferencingFactory.<Request>referenceFactory()).to(new TypeLiteral<Ref<Request>>() {})
+                    .in(RequestScoped.class);
 
-            bindFactory(GrizzlyResponseReferencingFactory.class).to(Response.class).in(PerLookup.class);
-            bindFactory(ReferencingFactory.<Response>referenceFactory()).to(new TypeLiteral<Ref<Response>>() {
-            }).in(RequestScoped.class);
+            bindFactory(GrizzlyResponseReferencingFactory.class).to(Response.class)
+                    .proxy(true).proxyForSameScope(false).in(RequestScoped.class);
+            bindFactory(ReferencingFactory.<Response>referenceFactory()).to(new TypeLiteral<Ref<Response>>() {})
+                    .in(RequestScoped.class);
         }
     }
 
@@ -163,9 +181,11 @@ public final class GrizzlyHttpContainer extends HttpHandler implements Container
 
         private final String name;
         private final Response grizzlyResponse;
+        private final boolean configSetStatusOverSendError;
 
-        ResponseWriter(final Response response) {
+        ResponseWriter(final Response response, final boolean configSetStatusOverSendError) {
             this.grizzlyResponse = response;
+            this.configSetStatusOverSendError = configSetStatusOverSendError;
 
             if (logger.isDebugLoggable()) {
                 this.name = "ResponseWriter {" + "id=" + UUID.randomUUID().toString() + ", grizzlyResponse=" + grizzlyResponse.hashCode() + '}';
@@ -203,12 +223,12 @@ public final class GrizzlyHttpContainer extends HttpHandler implements Container
                                     timeoutHandler.onTimeout(ResponseWriter.this);
                                 }
 
-                                // TODO should we return true ins some cases instead?
-                                // Returning false relies on the fact that the timeoutHandler
-                                // will resume the response.
+                                // TODO should we return true in some cases instead?
+                                // Returning false relies on the fact that the timeoutHandler will resume the response.
                                 return false;
                             }
-                        });
+                        }
+                );
                 return true;
             } catch (IllegalStateException ex) {
                 return false;
@@ -253,13 +273,26 @@ public final class GrizzlyHttpContainer extends HttpHandler implements Container
         }
 
         @Override
+        @SuppressWarnings("MagicNumber")
         public void failure(Throwable error) {
             try {
                 if (!grizzlyResponse.isCommitted()) {
-                    grizzlyResponse.sendError(500, error.getMessage());
+                    try {
+                        if (configSetStatusOverSendError) {
+                            grizzlyResponse.reset();
+                            grizzlyResponse.setStatus(500, "Request failed.");
+                        } else {
+                            grizzlyResponse.sendError(500, "Request failed.");
+                        }
+                    } catch (IllegalStateException ex) {
+                        // a race condition externally committing the response can still occur...
+                        logger.log(Level.FINER, "Unable to reset failed response.", ex);
+                    } catch (IOException ex) {
+                        throw new ContainerException(
+                                LocalizationMessages.EXCEPTION_SENDING_ERROR_RESPONSE(500, "Request failed."),
+                                ex);
+                    }
                 }
-            } catch (IOException e) {
-                logger.log(Level.SEVERE, "Unable to send 500 error response.", e);
             } finally {
                 logger.debugLog("{0} - failure(...) called", name);
                 rethrow(error);
@@ -289,17 +322,14 @@ public final class GrizzlyHttpContainer extends HttpHandler implements Container
     private volatile ContainerLifecycleListener containerListener;
 
     /**
-     * Creates a new Grizzly container.
+     * Create a new Grizzly HTTP container.
      *
-     * @param application Jersey application to be deployed on Grizzly container.
+     * @param application JAX-RS / Jersey application to be deployed on Grizzly HTTP container.
      */
-    GrizzlyHttpContainer(final ApplicationHandler application) {
-        this.appHandler = application;
-        this.containerListener = ConfigHelper.getContainerLifecycleListener(application);
-
-        this.appHandler.registerAdditionalBinders(new HashSet<Binder>() {{
-            add(new GrizzlyBinder());
-        }});
+    GrizzlyHttpContainer(final Application application) {
+        this.appHandler = new ApplicationHandler(application, new GrizzlyBinder());
+        this.containerListener = ConfigHelper.getContainerLifecycleListener(appHandler);
+        cacheConfigSetStatusOverSendError();
     }
 
     @Override
@@ -310,7 +340,7 @@ public final class GrizzlyHttpContainer extends HttpHandler implements Container
 
     @Override
     public void service(final Request request, final Response response) {
-        final ResponseWriter responseWriter = new ResponseWriter(response);
+        final ResponseWriter responseWriter = new ResponseWriter(response, configSetStatusOverSendError);
         try {
             logger.debugLog("GrizzlyHttpContainer.service(...) started");
             URI baseUri = getBaseUri(request);
@@ -333,7 +363,6 @@ public final class GrizzlyHttpContainer extends HttpHandler implements Container
             });
             appHandler.handle(requestContext);
         } finally {
-            // TODO if writer not closed or suspended yet, suspend.
             logger.debugLog("GrizzlyHttpContainer.service(...) finished");
         }
     }
@@ -350,12 +379,17 @@ public final class GrizzlyHttpContainer extends HttpHandler implements Container
 
     @Override
     public void reload(ResourceConfig configuration) {
-        appHandler = new ApplicationHandler(configuration);
-        appHandler.registerAdditionalBinders(new HashSet<Binder>() {{
-            add(new GrizzlyBinder());
-        }});
+        this.containerListener.onShutdown(this);
+        appHandler = new ApplicationHandler(configuration, new GrizzlyBinder());
         this.containerListener = ConfigHelper.getContainerLifecycleListener(appHandler);
         containerListener.onReload(this);
+        containerListener.onStartup(this);
+        cacheConfigSetStatusOverSendError();
+    }
+
+    @Override
+    public ApplicationHandler getApplicationHandler() {
+        return appHandler;
     }
 
     @Override
@@ -402,7 +436,7 @@ public final class GrizzlyHttpContainer extends HttpHandler implements Container
     private String getBasePath(final Request request) {
         final String contextPath = request.getContextPath();
 
-        if (contextPath == null || contextPath.length() == 0) {
+        if (contextPath == null || contextPath.isEmpty()) {
             return "/";
         } else if (contextPath.charAt(contextPath.length() - 1) != '/') {
             return contextPath + "/";
@@ -413,10 +447,9 @@ public final class GrizzlyHttpContainer extends HttpHandler implements Container
 
     private URI getRequestUri(URI baseUri, Request grizzlyRequest) {
         // TODO: this is terrible, there must be a way to obtain the original request URI!
-        String originalUri = UriBuilder
-                .fromPath(
-                        grizzlyRequest.getRequest().getRequestURIRef().getOriginalRequestURIBC()
-                                .toString(Charsets.DEFAULT_CHARSET)).build().toString();
+        String originalUri = UriBuilder.fromPath(
+                grizzlyRequest.getRequest().getRequestURIRef().getOriginalRequestURIBC().toString(Charsets.DEFAULT_CHARSET)
+        ).build().toString();
 
         String queryString = grizzlyRequest.getQueryString();
         if (queryString != null) {
@@ -424,5 +457,14 @@ public final class GrizzlyHttpContainer extends HttpHandler implements Container
         }
 
         return baseUri.resolve(originalUri);
+    }
+
+    /**
+     * The method reads and caches value of configuration property
+     * {@link org.glassfish.jersey.server.ServerProperties#RESPONSE_SET_STATUS_OVER_SEND_ERROR} for future purposes.
+     */
+    private void cacheConfigSetStatusOverSendError() {
+        this.configSetStatusOverSendError = ServerProperties.getValue(getConfiguration().getProperties(),
+                ServerProperties.RESPONSE_SET_STATUS_OVER_SEND_ERROR, false, Boolean.class);
     }
 }

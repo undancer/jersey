@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -54,29 +54,31 @@ import org.glassfish.jersey.osgi.test.util.Helper;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.server.ServerProperties;
 import org.glassfish.jersey.servlet.ServletContainer;
-import org.glassfish.jersey.test.TestProperties;
 
 import org.glassfish.grizzly.http.server.HttpServer;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.ops4j.pax.exam.Option;
 import org.ops4j.pax.exam.Configuration;
+import org.ops4j.pax.exam.Option;
 import org.ops4j.pax.exam.junit.PaxExam;
-
 import static org.junit.Assert.assertEquals;
 import static org.ops4j.pax.exam.CoreOptions.mavenBundle;
 
+/**
+ * NOTE: This test is excluded on JDK6 as it requires Servlet 3.1 API that is built against JDK 7.
+ *
+ * @author Jakub Podlesak (jakub.podlesak at oracle.com)
+ * @author Michal Gajdos (michal.gajdos at oracle.com)
+ */
 @RunWith(PaxExam.class)
 public class PackageScanningTest {
-
-    private static final int port = Helper.getEnvVariable(TestProperties.CONTAINER_PORT, 8080);
 
     private static final String CONTEXT = "/jersey";
 
     private static final URI baseUri = UriBuilder.
             fromUri("http://localhost").
-            port(port).
+            port(Helper.getPort()).
             path(CONTEXT).build();
 
     @Configuration
@@ -88,7 +90,7 @@ public class PackageScanningTest {
 
                 mavenBundle().groupId("org.glassfish.jersey.media").artifactId("jersey-media-sse").versionAsInProject(),
 
-                mavenBundle().groupId("javax.servlet").artifactId("javax.servlet-api").version("3.1-b02"),
+                mavenBundle().groupId("javax.servlet").artifactId("javax.servlet-api").version("3.1.0"),
                 mavenBundle().groupId("org.glassfish.grizzly").artifactId("grizzly-http-servlet").versionAsInProject(),
                 mavenBundle().groupId("org.glassfish.jersey.containers").artifactId("jersey-container-servlet-core").
                         versionAsInProject(),
@@ -96,7 +98,7 @@ public class PackageScanningTest {
                         versionAsInProject(),
 
                 // MBR/MBW for JSON-P is on the classpath.
-                mavenBundle().groupId("javax.json").artifactId("javax.json-api").versionAsInProject()
+                mavenBundle().groupId("org.glassfish").artifactId("javax.json").versionAsInProject()
         ));
 
         options = Helper.addPaxExamMavenLocalRepositoryProperty(options);
@@ -131,7 +133,6 @@ public class PackageScanningTest {
             Thread.currentThread().setContextClassLoader(originalContextClassLoader);
         }
         // END of workaround - when grizzly updated to more recent version, only the inner line of try clause should remain:
-        // HttpServer server = GrizzlyWebContainerFactory.create(baseUri, ServletContainer.class, initParams);
 
         _testSimpleResource(server);
     }
@@ -140,10 +141,9 @@ public class PackageScanningTest {
         final Client client = ClientBuilder.newClient();
         final String response = client.target(baseUri).path("/simple").request().get(String.class);
 
-        System.out.println("RESULT = " + response);
         assertEquals("OK", response);
 
-        server.stop();
+        server.shutdownNow();
     }
 
 }

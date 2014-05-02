@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -42,6 +42,8 @@ package org.glassfish.jersey.client.oauth1;
 import javax.ws.rs.core.Feature;
 import javax.ws.rs.core.FeatureContext;
 
+import org.glassfish.jersey.oauth1.signature.OAuth1Parameters;
+import org.glassfish.jersey.oauth1.signature.OAuth1Secrets;
 import org.glassfish.jersey.oauth1.signature.OAuth1SignatureFeature;
 
 /**
@@ -72,24 +74,28 @@ import org.glassfish.jersey.oauth1.signature.OAuth1SignatureFeature;
  */
 final class OAuth1ClientFeature implements Feature {
 
-
-    private final OAuth1ClientFilter filter;
-
+    private final OAuth1Parameters parameters;
+    private final OAuth1Secrets secrets;
 
     /**
      * Create a new feature.
      *
-     * @param filter The Oauth filter that should be used in request processing.
+     * @param parameters OAuth parameters.
+     * @param secrets OAuth client/token secret.
      */
-    OAuth1ClientFeature(OAuth1ClientFilter filter) {
-        this.filter = filter;
+    OAuth1ClientFeature(final OAuth1Parameters parameters, final OAuth1Secrets secrets) {
+        this.parameters = parameters;
+        this.secrets = secrets;
     }
 
-
     @Override
-    public boolean configure(FeatureContext context) {
+    public boolean configure(final FeatureContext context) {
         context.register(OAuth1SignatureFeature.class);
-        context.register(filter);
+        context.register(OAuth1ClientFilter.class);
+
+        context.property(OAuth1ClientSupport.OAUTH_PROPERTY_OAUTH_PARAMETERS, parameters);
+        context.property(OAuth1ClientSupport.OAUTH_PROPERTY_OAUTH_SECRETS, secrets);
+
         return true;
     }
 }

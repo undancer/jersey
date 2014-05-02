@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2011-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -46,18 +46,20 @@ import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.net.HttpURLConnection;
 import java.net.ProtocolException;
-import java.net.URL;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.security.AccessController;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javax.ws.rs.ProcessingException;
-import javax.ws.rs.core.Configuration;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 
@@ -73,72 +75,81 @@ import org.glassfish.jersey.internal.util.collection.Values;
 import org.glassfish.jersey.message.internal.OutboundMessageContext;
 import org.glassfish.jersey.message.internal.Statuses;
 
-import com.google.common.base.Predicates;
-import com.google.common.collect.Maps;
-import com.google.common.util.concurrent.MoreExecutors;
+import jersey.repackaged.com.google.common.base.Predicates;
+import jersey.repackaged.com.google.common.collect.Maps;
+import jersey.repackaged.com.google.common.util.concurrent.MoreExecutors;
 
 /**
  * Default client transport connector using {@link HttpURLConnection}.
  *
  * @author Marek Potociar (marek.potociar at oracle.com)
  */
-public class HttpUrlConnector implements Connector {
-    private final ConnectionFactory connectionFactory;
-    private final Integer chunkLength;
+class HttpUrlConnector implements Connector {
+
+    private static final Logger LOGGER = Logger.getLogger(HttpUrlConnector.class.getName());
+    private static final String ALLOW_RESTRICTED_HEADERS_SYSTEM_PROPERTY = "sun.net.http.allowRestrictedHeaders";
+    // The list of restricted headers is extracted from sun.net.www.protocol.http.HttpURLConnection
+    private static final String[] restrictedHeaders = {
+            "Access-Control-Request-Headers",
+            "Access-Control-Request-Method",
+            "Connection", /* close is allowed */
+            "Content-Length",
+            "Content-Transfer-Encoding",
+            "Host",
+            "Keep-Alive",
+            "Origin",
+            "Trailer",
+            "Transfer-Encoding",
+            "Upgrade",
+            "Via"
+    };
+
+    private static final Set<String> restrictedHeaderSet = new HashSet<String>(restrictedHeaders.length);
+
+    static {
+        for (String headerName : restrictedHeaders) {
+            restrictedHeaderSet.add(headerName.toLowerCase());
+        }
+    }
+
+    private final HttpUrlConnectorProvider.ConnectionFactory connectionFactory;
+    private final int chunkSize;
     private final boolean fixLengthStreaming;
+    private final boolean setMethodWorkaround;
+    private final boolean isRestrictedHeaderPropertySet;
+
 
     /**
-     * A factory for {@link HttpURLConnection} instances.
-     * <p>
-     * A factory may be used to create a {@link HttpURLConnection} and configure
-     * it in a custom manner that is not possible using the Client API.
-     * <p>
-     * A factory instance may be registered with the constructor
-     * {@link HttpUrlConnector#HttpUrlConnector(javax.ws.rs.core.Configuration,
-       org.glassfish.jersey.client.HttpUrlConnector.ConnectionFactory)}
-     * Then the {@link HttpUrlConnector} instance may be registered with a {@link JerseyClient}
-     * or {@link JerseyWebTarget} configuration via
-     * {@link ClientConfig#connector(org.glassfish.jersey.client.spi.Connector)}.
-     */
-    public interface ConnectionFactory {
-
-        /**
-         * Get a {@link HttpURLConnection} for a given URL.
-         * <p>
-         * Implementation of the method MUST be thread-safe and MUST ensure that
-         * a dedicated {@link HttpURLConnection} instance is returned for concurrent
-         * requests.
-         *
-         * @param url the endpoint URL.
-         * @return the {@link HttpURLConnection}.
-         * @throws java.io.IOException in case the connection cannot be provided.
-         */
-        public HttpURLConnection getConnection(URL url) throws IOException;
-    }
-
-    /**
-     * Create default {@link HttpURLConnection}-based Jersey client {@link Connector connector}.
+     * Create new {@code HttpUrlConnector} instance.
      *
-     * @param configuration Client configuration.
+     * @param connectionFactory   {@link javax.net.ssl.HttpsURLConnection} factory to be used when creating connections.
+     * @param chunkSize           chunk size to use when using HTTP chunked transfer coding.
+     * @param fixLengthStreaming  specify if the the {@link java.net.HttpURLConnection#setFixedLengthStreamingMode(int)
+     *                            fixed-length streaming mode} on the underlying HTTP URL connection instances should be
+     *                            used when sending requests.
+     * @param setMethodWorkaround specify if the reflection workaround should be used to set HTTP URL connection method
+     *                            name. See {@link HttpUrlConnectorProvider#SET_METHOD_WORKAROUND} for details.
      */
-    public HttpUrlConnector(final Configuration configuration) {
-        this(configuration, null);
-    }
-
-    /**
-     * Create default {@link HttpURLConnection}-based Jersey client {@link Connector connector}.
-     *
-     * @param configuration Client configuration.
-     * @param connectionFactory {@link HttpURLConnection} instance factory.
-     */
-    public HttpUrlConnector(final Configuration configuration, final ConnectionFactory connectionFactory) {
-        this.chunkLength = PropertiesHelper.getValue(configuration.getProperties(),
-                ClientProperties.CHUNKED_ENCODING_SIZE, null, Integer.class);
-
-        this.fixLengthStreaming = PropertiesHelper.getValue(configuration.getProperties(),
-                ClientProperties.HTTP_URL_CONNECTOR_FIX_LENGTH_STREAMING, false, Boolean.class);
-
+    HttpUrlConnector(HttpUrlConnectorProvider.ConnectionFactory connectionFactory,
+                     int chunkSize,
+                     boolean fixLengthStreaming,
+                     boolean setMethodWorkaround) {
         this.connectionFactory = connectionFactory;
+        this.chunkSize = chunkSize;
+        this.fixLengthStreaming = fixLengthStreaming;
+        this.setMethodWorkaround = setMethodWorkaround;
+
+        // check if sun.net.http.allowRestrictedHeaders system property has been set and log the result
+        // the property is being cached in the HttpURLConnection, so this is only informative - there might
+        // already be some connection(s), that existed before the property was set/changed.
+        isRestrictedHeaderPropertySet = Boolean.valueOf(AccessController.doPrivileged(
+                PropertiesHelper.getSystemProperty(ALLOW_RESTRICTED_HEADERS_SYSTEM_PROPERTY, "false")
+        ));
+
+        LOGGER.config(isRestrictedHeaderPropertySet ?
+                LocalizationMessages.RESTRICTED_HEADER_PROPERTY_SETTING_TRUE(ALLOW_RESTRICTED_HEADERS_SYSTEM_PROPERTY) :
+                LocalizationMessages.RESTRICTED_HEADER_PROPERTY_SETTING_FALSE(ALLOW_RESTRICTED_HEADERS_SYSTEM_PROPERTY)
+        );
     }
 
     private static InputStream getInputStream(final HttpURLConnection uc) throws IOException {
@@ -146,7 +157,7 @@ public class HttpUrlConnector implements Connector {
             private final UnsafeValue<InputStream, IOException> in = Values.lazy(new UnsafeValue<InputStream, IOException>() {
                 @Override
                 public InputStream get() throws IOException {
-                    if (uc.getResponseCode() < 400) {
+                    if (uc.getResponseCode() < Response.Status.BAD_REQUEST.getStatusCode()) {
                         return uc.getInputStream();
                     } else {
                         InputStream ein = uc.getErrorStream();
@@ -241,34 +252,23 @@ public class HttpUrlConnector implements Connector {
     }
 
     private ClientResponse _apply(final ClientRequest request) throws IOException {
-        final Map<String, Object> configurationProperties = request.getConfiguration().getProperties();
-
         final HttpURLConnection uc;
 
-        final URL endpointUrl = request.getUri().toURL();
-        if (this.connectionFactory == null) {
-            uc = (HttpURLConnection) endpointUrl.openConnection();
-        } else {
-            uc = this.connectionFactory.getConnection(endpointUrl);
-        }
+        uc = this.connectionFactory.getConnection(request.getUri().toURL());
         uc.setDoInput(true);
 
         final String httpMethod = request.getMethod();
-        if (PropertiesHelper.getValue(configurationProperties,
-                ClientProperties.HTTP_URL_CONNECTION_SET_METHOD_WORKAROUND, false)) {
+        if (request.resolveProperty(HttpUrlConnectorProvider.SET_METHOD_WORKAROUND, setMethodWorkaround)) {
             setRequestMethodViaJreBugWorkaround(uc, httpMethod);
         } else {
             uc.setRequestMethod(httpMethod);
         }
 
-        uc.setInstanceFollowRedirects(PropertiesHelper.getValue(configurationProperties,
-                ClientProperties.FOLLOW_REDIRECTS, true));
+        uc.setInstanceFollowRedirects(request.resolveProperty(ClientProperties.FOLLOW_REDIRECTS, true));
 
-        uc.setConnectTimeout(PropertiesHelper.getValue(configurationProperties,
-                ClientProperties.CONNECT_TIMEOUT, uc.getConnectTimeout()));
+        uc.setConnectTimeout(request.resolveProperty(ClientProperties.CONNECT_TIMEOUT, uc.getConnectTimeout()));
 
-        uc.setReadTimeout(PropertiesHelper.getValue(configurationProperties,
-                ClientProperties.READ_TIMEOUT, uc.getReadTimeout()));
+        uc.setReadTimeout(request.resolveProperty(ClientProperties.READ_TIMEOUT, uc.getReadTimeout()));
 
         if (uc instanceof HttpsURLConnection) {
             HttpsURLConnection suc = (HttpsURLConnection) uc;
@@ -283,16 +283,21 @@ public class HttpUrlConnector implements Connector {
 
         final Object entity = request.getEntity();
         if (entity != null) {
-            final int length = request.getLength();
-            if (fixLengthStreaming && length > 0) {
-                uc.setFixedLengthStreamingMode(length);
-            } else if (chunkLength != null) {
-                uc.setChunkedStreamingMode(chunkLength);
-            }
+            RequestEntityProcessing entityProcessing = request.resolveProperty(
+                    ClientProperties.REQUEST_ENTITY_PROCESSING, RequestEntityProcessing.class);
 
+
+            if (entityProcessing == null || entityProcessing != RequestEntityProcessing.BUFFERED) {
+                final int length = request.getLength();
+                if (fixLengthStreaming && length > 0) {
+                    uc.setFixedLengthStreamingMode(length);
+                } else if (entityProcessing == RequestEntityProcessing.CHUNKED) {
+                    uc.setChunkedStreamingMode(chunkSize);
+                }
+            }
             uc.setDoOutput(true);
 
-            if (httpMethod.equalsIgnoreCase("GET")) {
+            if ("GET".equalsIgnoreCase(httpMethod)) {
                 final Logger logger = Logger.getLogger(HttpUrlConnector.class.getName());
                 if (logger.isLoggable(Level.INFO)) {
                     logger.log(Level.INFO, LocalizationMessages.HTTPURLCONNECTION_REPLACES_GET_WITH_ENTITY());
@@ -315,21 +320,32 @@ public class HttpUrlConnector implements Connector {
 
         final int code = uc.getResponseCode();
         final String reasonPhrase = uc.getResponseMessage();
-        final Response.StatusType status = reasonPhrase == null ?
-                Statuses.from(code) : Statuses.from(code, reasonPhrase);
-        ClientResponse responseContext = new ClientResponse(
-                status, request);
-        responseContext.headers(Maps.<String, List<String>>filterKeys(uc.getHeaderFields(), Predicates.notNull()));
+        final Response.StatusType status =
+                reasonPhrase == null ? Statuses.from(code) : Statuses.from(code, reasonPhrase);
+        final URI resolvedRequestUri;
+        try {
+            resolvedRequestUri = uc.getURL().toURI();
+        } catch (URISyntaxException e) {
+            throw new ProcessingException(e);
+        }
+
+        ClientResponse responseContext = new ClientResponse(status, request, resolvedRequestUri);
+        responseContext.headers(Maps.filterKeys(uc.getHeaderFields(), Predicates.notNull()));
         responseContext.setEntityStream(getInputStream(uc));
 
         return responseContext;
     }
 
     private void setOutboundHeaders(MultivaluedMap<String, String> headers, HttpURLConnection uc) {
+        boolean restrictedSent = false;
         for (Map.Entry<String, List<String>> header : headers.entrySet()) {
+            String headerName = header.getKey();
+            String headerValue;
+
             List<String> headerValues = header.getValue();
             if (headerValues.size() == 1) {
-                uc.setRequestProperty(header.getKey(), headerValues.get(0));
+                headerValue = headerValues.get(0);
+                uc.setRequestProperty(headerName, headerValue);
             } else {
                 StringBuilder b = new StringBuilder();
                 boolean add = false;
@@ -340,16 +356,32 @@ public class HttpUrlConnector implements Connector {
                     add = true;
                     b.append(value);
                 }
-                uc.setRequestProperty(header.getKey(), b.toString());
+                headerValue = b.toString();
+                uc.setRequestProperty(headerName, headerValue);
+            }
+            // if (at least one) restricted header was added and the allowRestrictedHeaders
+            if (!isRestrictedHeaderPropertySet && !restrictedSent) {
+                if (isHeaderRestricted(headerName, headerValue)) {
+                    restrictedSent = true;
+                }
             }
         }
+        if (restrictedSent) {
+            LOGGER.warning(LocalizationMessages.RESTRICTED_HEADER_POSSIBLY_IGNORED(ALLOW_RESTRICTED_HEADERS_SYSTEM_PROPERTY));
+        }
+    }
+
+    private boolean isHeaderRestricted(String name, String value) {
+        name = name.toLowerCase();
+        return name.startsWith("sec-") ||
+                restrictedHeaderSet.contains(name) && !("connection".equalsIgnoreCase(name) && "close".equalsIgnoreCase(value));
     }
 
     /**
      * Workaround for a bug in {@code HttpURLConnection.setRequestMethod(String)}
      * The implementation of Sun/Oracle is throwing a {@code ProtocolException}
-     * when the method is other than the HTTP/1.1 default methods. So to use {@code PROPFIND}
-     * and others, we must apply this workaround.
+     * when the method is not in the list of the HTTP/1.1 default methods.
+     * This means that to use e.g. {@code PROPFIND} and others, we must apply this workaround.
      *
      * See issue http://java.net/jira/browse/JERSEY-639
      */

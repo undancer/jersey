@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -45,21 +45,24 @@ import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
-import javax.inject.Inject;
-
-import javax.inject.Provider;
+import javax.ws.rs.Priorities;
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.container.ContainerRequestFilter;
 import javax.ws.rs.core.Configuration;
 import javax.ws.rs.core.Response;
 
+import javax.annotation.Priority;
+import javax.inject.Inject;
+import javax.inject.Provider;
+
 import org.glassfish.jersey.internal.util.PropertiesHelper;
 import org.glassfish.jersey.oauth1.signature.OAuth1Parameters;
+import org.glassfish.jersey.oauth1.signature.OAuth1Secrets;
 import org.glassfish.jersey.oauth1.signature.OAuth1Signature;
 import org.glassfish.jersey.oauth1.signature.OAuth1SignatureException;
-import org.glassfish.jersey.oauth1.signature.OAuth1Secrets;
 import org.glassfish.jersey.server.ExtendedUriInfo;
 import org.glassfish.jersey.server.oauth1.internal.OAuthServerRequest;
 
@@ -73,6 +76,7 @@ import org.glassfish.jersey.server.oauth1.internal.OAuthServerRequest;
  * @author Paul C. Bryan <pbryan@sun.com>
  * @author Martin Matula
  */
+@Priority(Priorities.AUTHENTICATION)
 class OAuth1ServerFilter implements ContainerRequestFilter {
 
     /** OAuth Server */
@@ -113,15 +117,23 @@ class OAuth1ServerFilter implements ContainerRequestFilter {
         versions = Collections.unmodifiableSet(v);
 
         // optional initialization parameters (defaulted)
-        String realm = PropertiesHelper.getValue(rc.getProperties(), OAuth1ServerProperties.REALM, "default", String.class);
+        String realm = OAuth1ServerProperties.getValue(rc.getProperties(), OAuth1ServerProperties.REALM, "default", String.class);
         /* Maximum age (in milliseconds) of timestamp to accept in incoming messages. */
-        int maxAge = PropertiesHelper.getValue(rc.getProperties(), OAuth1ServerProperties.MAX_AGE, 300000);
+        int maxAge = OAuth1ServerProperties.getValue(rc.getProperties(), OAuth1ServerProperties.MAX_AGE, 300000);
         /* Average requests to process between nonce garbage collection passes. */
-        int gcPeriod = PropertiesHelper.getValue(rc.getProperties(), OAuth1ServerProperties.GC_PERIOD, 100);
-        ignorePathPattern = pattern(PropertiesHelper.getValue(rc.getProperties(), OAuth1ServerProperties.IGNORE_PATH_PATTERN,
+        int gcPeriod = OAuth1ServerProperties.getValue(rc.getProperties(), OAuth1ServerProperties.GC_PERIOD, 100);
+        ignorePathPattern = pattern(OAuth1ServerProperties.getValue(rc.getProperties(), OAuth1ServerProperties.IGNORE_PATH_PATTERN,
                 null, String.class)); // no pattern
         optional = PropertiesHelper.isProperty(rc.getProperties(), OAuth1ServerProperties.NO_FAIL);
-        nonces = new NonceManager(maxAge, gcPeriod);
+
+        final String timeUnitStr = OAuth1ServerProperties.getValue(rc.getProperties(), OAuth1ServerProperties.TIMESTAMP_UNIT,
+                String.class);
+        final TimeUnit timeUnit = timeUnitStr != null ? TimeUnit.valueOf(timeUnitStr) : TimeUnit.SECONDS;
+
+        final int maxCacheSize = OAuth1ServerProperties.getValue(rc.getProperties(), OAuth1ServerProperties.MAX_NONCE_CACHE_SIZE,
+                2000000);
+
+        nonces = new NonceManager(maxAge, gcPeriod, timeUnit, maxCacheSize);
 
         // www-authenticate header for the life of the object
         wwwAuthenticateHeader = "OAuth realm=\"" + realm + "\"";
@@ -143,15 +155,12 @@ class OAuth1ServerFilter implements ContainerRequestFilter {
             return;
         }
 
-
-
         // do not filter if the request path matches pattern to ignore
         if (match(ignorePathPattern, request.getUriInfo().getPath())) {
             return;
         }
 
         OAuth1SecurityContext sc;
-
         try {
             sc = getSecurityContext(request);
         } catch (OAuth1Exception e) {
@@ -255,7 +264,7 @@ class OAuth1ServerFilter implements ContainerRequestFilter {
 
     private boolean verifySignature(OAuthServerRequest osr, OAuth1Parameters params, OAuth1Secrets secrets) {
         try {
-            return  oAuth1Signature.verify(osr, params, secrets);
+            return oAuth1Signature.verify(osr, params, secrets);
         } catch (OAuth1SignatureException ose) {
             throw newBadRequestException();
         }

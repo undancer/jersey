@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -37,7 +37,6 @@
  * only if the new code is made subject to such option by the copyright
  * holder.
  */
-
 package org.glassfish.jersey.tests.e2e.server;
 
 import java.util.Set;
@@ -48,19 +47,17 @@ import javax.ws.rs.core.Application;
 
 import javax.annotation.PreDestroy;
 
+import org.glassfish.jersey.test.DeploymentContext;
 import org.glassfish.jersey.test.JerseyTest;
-import org.glassfish.jersey.test.spi.TestContainerException;
 
-import com.google.common.collect.Sets;
 import org.junit.AfterClass;
-
+import org.junit.Test;
 import static org.hamcrest.CoreMatchers.is;
-
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 
-import org.junit.Test;
+import jersey.repackaged.com.google.common.collect.Sets;
 
 
 /**
@@ -70,7 +67,7 @@ import org.junit.Test;
  */
 public class ApplicationPreDestroyTest extends JerseyTest {
 
-    static boolean appDestroyInvoked = false;
+    private static boolean appDestroyInvoked = false;
 
     @Path("/")
     public static class Resource {
@@ -94,8 +91,9 @@ public class ApplicationPreDestroyTest extends JerseyTest {
         }
     }
 
-    public ApplicationPreDestroyTest() throws TestContainerException {
-        super(MyApplication.class);
+    @Override
+    protected DeploymentContext configureDeployment() {
+        return DeploymentContext.newInstance(MyApplication.class);
     }
 
     @Test

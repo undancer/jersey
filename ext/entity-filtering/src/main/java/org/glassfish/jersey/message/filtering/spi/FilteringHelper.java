@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -45,6 +45,7 @@ import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
 import java.security.AccessController;
 import java.util.Collections;
@@ -57,7 +58,7 @@ import javax.xml.bind.JAXBElement;
 import org.glassfish.jersey.internal.util.ReflectionHelper;
 import org.glassfish.jersey.internal.util.collection.DataStructures;
 
-import com.google.common.collect.Maps;
+import jersey.repackaged.com.google.common.collect.Maps;
 
 /**
  * Utility methods for Security entity filtering.
@@ -108,33 +109,34 @@ public final class FilteringHelper {
             return Object.class;
         }
         if (genericType instanceof Class && genericType != JAXBElement.class) {
-            Class<?> clazz = (Class<?>) genericType;
+            final Class<?> clazz = (Class<?>) genericType;
             if (clazz.isArray()) {
                 return _getEntityClass(clazz.getComponentType());
             }
             return clazz;
         } else if (genericType instanceof ParameterizedType) {
-            Type type = ((ParameterizedType) genericType).getActualTypeArguments()[0];
+            final Type type = ((ParameterizedType) genericType).getActualTypeArguments()[0];
             if (type instanceof ParameterizedType) {
-                Type rawType = ((ParameterizedType) type).getRawType();
+                final Type rawType = ((ParameterizedType) type).getRawType();
                 if (rawType == JAXBElement.class) {
                     return _getEntityClass(type);
                 }
             } else if (type instanceof WildcardType) {
-                Type[] upperTypes = ((WildcardType) type).getUpperBounds();
+                final Type[] upperTypes = ((WildcardType) type).getUpperBounds();
                 if (upperTypes.length > 0) {
-                    Type upperType = upperTypes[0];
+                    final Type upperType = upperTypes[0];
                     if (upperType instanceof Class) {
                         return (Class<?>) upperType;
                     }
                 }
-            } else if (JAXBElement.class == type) {
+            } else if (JAXBElement.class == type
+                    || type instanceof TypeVariable) {
                 return Object.class;
             }
             //noinspection ConstantConditions
             return (Class<?>) type;
         } else if (genericType instanceof GenericArrayType) {
-            GenericArrayType genericArrayType = (GenericArrayType) genericType;
+            final GenericArrayType genericArrayType = (GenericArrayType) genericType;
             return _getEntityClass(genericArrayType.getGenericComponentType());
         } else {
             return Object.class;
@@ -157,6 +159,12 @@ public final class FilteringHelper {
 
                 methods.put(ReflectionHelper.getPropertyName(method), method);
             }
+        }
+
+        final Class<?> parent = clazz.getSuperclass();
+        // We're interested in fields/accessors in superclasses but not those from i.e. Object/Enum.
+        if (parent != null && !parent.getPackage().getName().startsWith("java.lang")) {
+            methods.putAll(getPropertyMethods(parent, isGetter));
         }
 
         return methods;

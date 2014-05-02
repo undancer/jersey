@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -75,17 +75,16 @@ import javax.xml.transform.Source;
 
 import org.glassfish.jersey.internal.LocalizationMessages;
 import org.glassfish.jersey.internal.PropertiesDelegate;
-import org.glassfish.jersey.internal.util.collection.Value;
 import org.glassfish.jersey.message.MessageBodyWorkers;
 
-import com.google.common.base.Function;
+import jersey.repackaged.com.google.common.base.Function;
 
 /**
  * Base inbound message context implementation.
  *
  * @author Marek Potociar (marek.potociar at oracle.com)
  */
-public class InboundMessageContext {
+public abstract class InboundMessageContext {
     private static final InputStream EMPTY = new InputStream() {
 
         @Override
@@ -114,7 +113,6 @@ public class InboundMessageContext {
     private final EntityContent entityContent;
     private final boolean translateNce;
     private MessageBodyWorkers workers;
-    private Value<Iterable<ReaderInterceptor>> readerInterceptors;
 
     /**
      * Input stream and its state. State is represented by the {@link Type Type enum} and
@@ -173,7 +171,7 @@ public class InboundMessageContext {
      *                     as required by JAX-RS specification on the server side.
      */
     public InboundMessageContext(boolean translateNce) {
-        this.headers = HeadersFactory.createInbound();
+        this.headers = HeaderUtils.createInbound();
         this.entityContent = new EntityContent();
         this.translateNce = translateNce;
     }
@@ -188,7 +186,7 @@ public class InboundMessageContext {
      * @return updated context.
      */
     public InboundMessageContext header(String name, Object value) {
-        getHeaders().add(name, HeadersFactory.asString(value, RuntimeDelegate.getInstance()));
+        getHeaders().add(name, HeaderUtils.asString(value, RuntimeDelegate.getInstance()));
         return this;
     }
 
@@ -200,7 +198,7 @@ public class InboundMessageContext {
      * @return updated context.
      */
     public InboundMessageContext headers(String name, Object... values) {
-        this.getHeaders().addAll(name, HeadersFactory.asStringList(Arrays.asList(values), RuntimeDelegate.getInstance()));
+        this.getHeaders().addAll(name, HeaderUtils.asStringList(Arrays.asList(values), RuntimeDelegate.getInstance()));
         return this;
     }
 
@@ -258,7 +256,7 @@ public class InboundMessageContext {
 
         final RuntimeDelegate rd = RuntimeDelegate.getInstance();
         for (Object element : values) {
-            linkedList.add(HeadersFactory.asString(element, rd));
+            linkedList.add(HeaderUtils.asString(element, rd));
         }
 
         return linkedList;
@@ -325,7 +323,7 @@ public class InboundMessageContext {
         }
 
         try {
-            return converter.apply(HeadersFactory.asString(value, null));
+            return converter.apply(HeaderUtils.asString(value, null));
         } catch (ProcessingException ex) {
             throw exception(name, value, ex);
         }
@@ -847,6 +845,8 @@ public class InboundMessageContext {
         MediaType mediaType = getMediaType();
         mediaType = mediaType == null ? MediaType.APPLICATION_OCTET_STREAM_TYPE : mediaType;
 
+
+        boolean shouldClose = !buffered;
         try {
             T t = (T) workers.readFrom(
                     rawType,
@@ -856,15 +856,18 @@ public class InboundMessageContext {
                     headers,
                     propertiesDelegate,
                     entityContent.getWrappedStream(),
-                    entityContent.hasContent() ? readerInterceptors.get() : Collections.<ReaderInterceptor>emptyList(),
+                    entityContent.hasContent() ? getReaderInterceptors() : Collections.<ReaderInterceptor>emptyList(),
                     translateNce);
 
-            if (!buffered && !(t instanceof Closeable) && !(t instanceof Source)) {
-                entityContent.close();
-            }
+            shouldClose = shouldClose && !(t instanceof Closeable) && !(t instanceof Source);
+
             return t;
         } catch (IOException ex) {
             throw new ProcessingException(LocalizationMessages.ERROR_READING_ENTITY_FROM_INPUT_STREAM(), ex);
+        } finally {
+            if (shouldClose) {
+                entityContent.close();
+            }
         }
     }
 
@@ -907,11 +910,12 @@ public class InboundMessageContext {
     }
 
     /**
-     * Set reader interceptors for reading entity from this context.
+     * Get reader interceptors bound to this context.
+     * <p>
+     * Interceptors will be used when one of the {@code readEntity} methods is invoked.
+     * </p>
      *
-     * @param readerInterceptors A value that returns reader interceptors in the interceptor execution order.
+     * @return reader interceptors bound to this context.
      */
-    public void setReaderInterceptors(Value<Iterable<ReaderInterceptor>> readerInterceptors) {
-        this.readerInterceptors = readerInterceptors;
-    }
+    protected abstract Iterable<ReaderInterceptor> getReaderInterceptors();
 }

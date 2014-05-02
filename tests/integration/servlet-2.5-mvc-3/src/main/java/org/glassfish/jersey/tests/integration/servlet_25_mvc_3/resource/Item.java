@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -41,6 +41,7 @@
 package org.glassfish.jersey.tests.integration.servlet_25_mvc_3.resource;
 
 import javax.ws.rs.GET;
+import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.MediaType;
 
@@ -49,15 +50,16 @@ import javax.xml.bind.annotation.XmlAccessorType;
 import javax.xml.bind.annotation.XmlRootElement;
 
 import org.glassfish.jersey.server.mvc.Template;
+import org.glassfish.jersey.server.mvc.Viewable;
 
-import com.google.common.base.Objects;
+import jersey.repackaged.com.google.common.base.Objects;
 
 @Template
 @Produces("text/html;qs=5")
 @XmlRootElement
 @XmlAccessorType(XmlAccessType.FIELD)
 public class Item {
-    
+
     private String title;
     private String author;
 
@@ -83,12 +85,23 @@ public class Item {
         return this;
     }
 
+    @GET
+    @Path("utf")
+    public Viewable getItemUtf8() {
+        return new Viewable("index.utf8.jsp", this);
+    }
+
+    @GET
+    @Path("iso")
+    public Viewable getItemIso88592() {
+        return new Viewable("index.iso88592.jsp", this);
+    }
+
     @Override
     public String toString() {
         return Objects.toStringHelper(Item.class).
                 add("title", title).
                 add("author", author).
-                omitNullValues().
                 toString();
     }
 }

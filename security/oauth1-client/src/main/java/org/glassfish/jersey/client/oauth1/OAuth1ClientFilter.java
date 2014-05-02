@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -42,11 +42,14 @@ package org.glassfish.jersey.client.oauth1;
 
 import java.io.IOException;
 
-import javax.inject.Inject;
-import javax.inject.Provider;
+import javax.ws.rs.Priorities;
 import javax.ws.rs.ProcessingException;
 import javax.ws.rs.client.ClientRequestContext;
 import javax.ws.rs.client.ClientRequestFilter;
+
+import javax.annotation.Priority;
+import javax.inject.Inject;
+import javax.inject.Provider;
 
 import org.glassfish.jersey.client.oauth1.internal.LocalizationMessages;
 import org.glassfish.jersey.message.MessageBodyWorkers;
@@ -66,6 +69,7 @@ import org.glassfish.jersey.oauth1.signature.OAuth1SignatureException;
  *
  * @since 2.3
  */
+@Priority(Priorities.AUTHENTICATION)
 class OAuth1ClientFilter implements ClientRequestFilter {
 
     @Inject
@@ -73,33 +77,6 @@ class OAuth1ClientFilter implements ClientRequestFilter {
 
     @Inject
     private Provider<MessageBodyWorkers> messageBodyWorkers;
-
-    private final OAuth1Parameters parameters;
-    private final OAuth1Secrets secrets;
-
-    public OAuth1ClientFilter() {
-        parameters = new OAuth1Parameters();
-        secrets = new OAuth1Secrets();
-    }
-
-    public OAuth1ClientFilter(OAuth1Parameters parameters, OAuth1Secrets secrets) {
-        this.parameters = parameters;
-        this.secrets = secrets;
-    }
-
-    public OAuth1ClientFilter(ConsumerCredentials consumerCredentials) {
-        this();
-        this.parameters.consumerKey(consumerCredentials.getConsumerKey());
-        this.secrets.consumerSecret(consumerCredentials.getConsumerSecret());
-    }
-
-
-    public OAuth1ClientFilter(ConsumerCredentials consumerCredentials, String signatureMethod, String realm) {
-        this(consumerCredentials);
-        parameters.setSignatureMethod(signatureMethod);
-        parameters.realm(realm);
-    }
-
 
     @Override
     public void filter(ClientRequestContext request) throws IOException {
@@ -111,25 +88,28 @@ class OAuth1ClientFilter implements ClientRequestFilter {
                 = (AccessToken) request.getProperty(OAuth1ClientSupport.OAUTH_PROPERTY_ACCESS_TOKEN);
         request.removeProperty(OAuth1ClientSupport.OAUTH_PROPERTY_ACCESS_TOKEN);
 
+        OAuth1Parameters parameters = (OAuth1Parameters) request.getProperty(OAuth1ClientSupport.OAUTH_PROPERTY_OAUTH_PARAMETERS);
+        if (parameters == null) {
+            parameters = (OAuth1Parameters) request.getConfiguration()
+                    .getProperty(OAuth1ClientSupport.OAUTH_PROPERTY_OAUTH_PARAMETERS);
+        } else {
+            request.removeProperty(OAuth1ClientSupport.OAUTH_PROPERTY_OAUTH_PARAMETERS);
+        }
 
-        final OAuth1Parameters paramFromProps
-                = (OAuth1Parameters) request.getProperty(OAuth1ClientSupport.OAUTH_PROPERTY_OAUTH_PARAMETERS);
-        request.removeProperty(OAuth1ClientSupport.OAUTH_PROPERTY_OAUTH_PARAMETERS);
-
-        final OAuth1Secrets secretsFromProps
-                = (OAuth1Secrets) request.getProperty(OAuth1ClientSupport.OAUTH_PROPERTY_OAUTH_SECRETS);
-        request.removeProperty(OAuth1ClientSupport.OAUTH_PROPERTY_OAUTH_SECRETS);
-
-
+        OAuth1Secrets secrets = (OAuth1Secrets) request.getProperty(OAuth1ClientSupport.OAUTH_PROPERTY_OAUTH_SECRETS);
+        if (secrets == null) {
+            secrets = (OAuth1Secrets) request.getConfiguration().getProperty(OAuth1ClientSupport.OAUTH_PROPERTY_OAUTH_SECRETS);
+        } else {
+            request.removeProperty(OAuth1ClientSupport.OAUTH_PROPERTY_OAUTH_SECRETS);
+        }
 
         if (request.getHeaders().containsKey("Authorization")) {
             return;
         }
 
-        final OAuth1Parameters paramCopy = paramFromProps != null ? (OAuth1Parameters) paramFromProps.clone() :
-                            (OAuth1Parameters) parameters.clone(); // make modifications to clone
-
-        final OAuth1Secrets secretsCopy = secretsFromProps != null ? secretsFromProps.clone() : secrets.clone();
+        // Make modifications to clones.
+        final OAuth1Parameters paramCopy = parameters.clone();
+        final OAuth1Secrets secretsCopy = secrets.clone();
 
         checkParametersConsistency(paramCopy, secretsCopy);
 

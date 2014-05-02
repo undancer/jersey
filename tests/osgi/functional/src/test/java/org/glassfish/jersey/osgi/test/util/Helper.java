@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -40,21 +40,20 @@
 
 package org.glassfish.jersey.osgi.test.util;
 
-import org.glassfish.jersey.internal.util.PropertiesHelper;
-import org.glassfish.jersey.test.TestProperties;
-import org.ops4j.pax.exam.Option;
-
 import java.security.AccessController;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 
+import org.glassfish.jersey.internal.util.PropertiesHelper;
+import org.glassfish.jersey.test.TestProperties;
+
+import org.ops4j.pax.exam.Option;
 import static org.ops4j.pax.exam.CoreOptions.junitBundles;
 import static org.ops4j.pax.exam.CoreOptions.mavenBundle;
 import static org.ops4j.pax.exam.CoreOptions.options;
 import static org.ops4j.pax.exam.CoreOptions.systemPackage;
 import static org.ops4j.pax.exam.CoreOptions.systemProperty;
-import static org.ops4j.pax.exam.CoreOptions.wrappedBundle;
 
 /**
  * Helper class to be used by individual tests.
@@ -67,7 +66,7 @@ public class Helper {
     /**
      * Jersey HTTP port.
      */
-    public static final int port = getEnvVariable("JERSEY_HTTP_PORT", 8080);
+    private static final int port = getEnvVariable(TestProperties.CONTAINER_PORT, 8080);
 
     /**
      * Returns an integer value of given system property, or a default value
@@ -87,10 +86,19 @@ public class Helper {
             try {
                 return Integer.parseInt(varValue);
             } catch (NumberFormatException e) {
-                // will return default value bellow
+                // will return default value below
             }
         }
         return defaultValue;
+    }
+
+    /**
+     * Returns a value of {@value TestProperties#CONTAINER_PORT} property which should be used as port number for test container.
+     *
+     * @return port number.
+     */
+    public static int getPort() {
+        return port;
     }
 
     /**
@@ -147,9 +155,6 @@ public class Helper {
                 // javax.annotation has to go first!
                 mavenBundle().groupId("javax.annotation").artifactId("javax.annotation-api").versionAsInProject(),
 
-                // Google Guava
-                mavenBundle().groupId("com.google.guava").artifactId("guava").versionAsInProject(),
-
                 junitBundles(),
 
                 // HK2
@@ -159,17 +164,20 @@ public class Helper {
                 mavenBundle().groupId("org.glassfish.hk2").artifactId("hk2-utils").versionAsInProject(),
                 mavenBundle().groupId("org.glassfish.hk2.external").artifactId("javax.inject").versionAsInProject(),
                 mavenBundle().groupId("org.glassfish.hk2.external").artifactId("asm-all-repackaged").versionAsInProject(),
-                mavenBundle().groupId("org.glassfish.hk2.external").artifactId("cglib").versionAsInProject(),
+                mavenBundle().groupId("org.glassfish.hk2.external").artifactId("aopalliance-repackaged").versionAsInProject(),
+                mavenBundle().groupId("org.javassist").artifactId("javassist").versionAsInProject(),
 
                 // Grizzly
                 systemPackage("sun.misc"),
                 mavenBundle().groupId("org.glassfish.grizzly").artifactId("grizzly-framework").versionAsInProject(),
-                mavenBundle().groupId("org.glassfish.grizzly").artifactId("grizzly-rcm").versionAsInProject(),
                 mavenBundle().groupId("org.glassfish.grizzly").artifactId("grizzly-http").versionAsInProject(),
                 mavenBundle().groupId("org.glassfish.grizzly").artifactId("grizzly-http-server").versionAsInProject(),
 
                 // javax.validation
                 mavenBundle().groupId("javax.validation").artifactId("validation-api").versionAsInProject(),
+
+                // Guava
+                mavenBundle().groupId("org.glassfish.jersey.bundles.repackaged").artifactId("jersey-guava").versionAsInProject(),
 
                 // Jersey Grizzly
                 mavenBundle().groupId("org.glassfish.jersey.containers").artifactId("jersey-container-grizzly2-http")

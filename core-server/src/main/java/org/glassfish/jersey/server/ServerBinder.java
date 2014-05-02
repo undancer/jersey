@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -42,16 +42,9 @@ package org.glassfish.jersey.server;
 import java.util.Map;
 
 import javax.ws.rs.RuntimeType;
-import javax.ws.rs.container.ContainerRequestContext;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.Request;
-import javax.ws.rs.core.SecurityContext;
-import javax.ws.rs.core.UriInfo;
 import javax.ws.rs.ext.MessageBodyWriter;
 import javax.ws.rs.ext.WriterInterceptor;
 
-import javax.inject.Inject;
-import javax.inject.Provider;
 import javax.inject.Singleton;
 
 import org.glassfish.jersey.internal.ContextResolverFactory;
@@ -61,28 +54,21 @@ import org.glassfish.jersey.internal.JerseyErrorService;
 import org.glassfish.jersey.internal.ServiceFinderBinder;
 import org.glassfish.jersey.internal.inject.ContextInjectionResolver;
 import org.glassfish.jersey.internal.inject.JerseyClassAnalyzer;
-import org.glassfish.jersey.internal.inject.ReferencingFactory;
-import org.glassfish.jersey.internal.inject.SecurityContextInjectee;
 import org.glassfish.jersey.internal.spi.AutoDiscoverable;
-import org.glassfish.jersey.internal.util.collection.Ref;
 import org.glassfish.jersey.message.internal.MessageBodyFactory;
 import org.glassfish.jersey.message.internal.MessagingBinders;
 import org.glassfish.jersey.process.internal.RequestScope;
-import org.glassfish.jersey.process.internal.RequestScoped;
 import org.glassfish.jersey.server.internal.JerseyResourceContext;
 import org.glassfish.jersey.server.internal.JsonWithPaddingInterceptor;
 import org.glassfish.jersey.server.internal.MappableExceptionWrapperInterceptor;
 import org.glassfish.jersey.server.internal.ProcessingProviders;
 import org.glassfish.jersey.server.internal.RuntimeExecutorsBinder;
-import org.glassfish.jersey.server.internal.inject.CloseableServiceBinder;
 import org.glassfish.jersey.server.internal.inject.ParameterInjectionBinder;
 import org.glassfish.jersey.server.internal.monitoring.MonitoringContainerListener;
-import org.glassfish.jersey.server.internal.process.RespondingContext;
-import org.glassfish.jersey.server.internal.routing.RouterBinder;
+import org.glassfish.jersey.server.internal.process.ServerProcessingBinder;
 import org.glassfish.jersey.server.model.internal.ResourceModelBinder;
 import org.glassfish.jersey.server.spi.ContainerProvider;
 
-import org.glassfish.hk2.api.TypeLiteral;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 
 /**
@@ -94,19 +80,6 @@ import org.glassfish.hk2.utilities.binding.AbstractBinder;
 class ServerBinder extends AbstractBinder {
 
     private final Map<String, Object> applicationProperties;
-
-    private static class RequestContextInjectionFactory extends ReferencingFactory<ContainerRequest> {
-        @Inject
-        public RequestContextInjectionFactory(Provider<Ref<ContainerRequest>> referenceFactory) {
-            super(referenceFactory);
-        }
-
-        @Override
-        @RequestScoped
-        public ContainerRequest provide() {
-            return super.provide();
-        }
-    }
 
     /**
      * Create new {@code ServerBinder} instance.
@@ -121,7 +94,7 @@ class ServerBinder extends AbstractBinder {
     protected void configure() {
         install(new RequestScope.Binder(), // must go first as it registers the request scope instance.
                 new JerseyErrorService.Binder(),
-                new ProcessingBinder(),
+                new ServerProcessingBinder(),
                 new ContextInjectionResolver.Binder(),
                 new ParameterInjectionBinder(),
                 new JerseyClassAnalyzer.Binder(),
@@ -131,82 +104,18 @@ class ServerBinder extends AbstractBinder {
                 new ContextResolverFactory.Binder(),
                 new JaxrsProviders.Binder(),
                 new ProcessingProviders.Binder(),
-                new ContainerFilteringStage.Binder(),
                 new ResourceModelBinder(),
                 new RuntimeExecutorsBinder(),
-                new RouterBinder(),
-                new ServiceFinderBinder<ContainerProvider>(ContainerProvider.class, applicationProperties, RuntimeType.SERVER),
-                new CloseableServiceBinder(),
+                new ServiceFinderBinder<>(ContainerProvider.class, applicationProperties, RuntimeType.SERVER),
                 new JerseyResourceContext.Binder(),
-                new ServiceFinderBinder<AutoDiscoverable>(AutoDiscoverable.class, applicationProperties, RuntimeType.SERVER),
+                new ServiceFinderBinder<>(AutoDiscoverable.class, applicationProperties, RuntimeType.SERVER),
                 new MappableExceptionWrapperInterceptor.Binder(),
                 new MonitoringContainerListener.Binder());
-
-        // Request/Response injection interfaces
-        bindFactory(ReferencingFactory.<Request>referenceFactory()).to(new TypeLiteral<Ref<Request>>() {
-        }).in(RequestScoped.class);
-
-        // server-side processing chain
-        bindFactory(RequestContextInjectionFactory.class).to(ContainerRequest.class).in(RequestScoped.class);
-        bindFactory(RequestContextInjectionFactory.class).to(ContainerRequestContext.class).in(RequestScoped.class);
-
-        bindFactory(ReferencingFactory.<ContainerRequest>referenceFactory()).to(new TypeLiteral<Ref<ContainerRequest>>() {
-        }).in(RequestScoped.class);
-
-        bind(DefaultRespondingContext.class).to(RespondingContext.class).in(RequestScoped.class);
 
         //ChunkedResponseWriter
         bind(ChunkedResponseWriter.class).to(MessageBodyWriter.class).in(Singleton.class);
 
         // JSONP
         bind(JsonWithPaddingInterceptor.class).to(WriterInterceptor.class).in(Singleton.class);
-
-        bindAsContract(ReferencesInitializer.class);
-
-        bindFactory(UriInfoReferencingFactory.class).to(UriInfo.class)
-                .proxy(true).proxyForSameScope(false).in(RequestScoped.class);
-        bindFactory(ReferencingFactory.<UriInfo>referenceFactory()).to(new TypeLiteral<Ref<UriInfo>>() {
-        }).in(RequestScoped.class);
-
-        bindFactory(HttpHeadersReferencingFactory.class).to(HttpHeaders.class)
-                .proxy(true).proxyForSameScope(false).in(RequestScoped.class);
-        bindFactory(ReferencingFactory.<HttpHeaders>referenceFactory()).to(new TypeLiteral<Ref<HttpHeaders>>() {
-        }).in(RequestScoped.class);
-
-        bindFactory(RequestReferencingFactory.class).to(Request.class)
-                .proxy(true).proxyForSameScope(false).in(RequestScoped.class);
-        bindFactory(ReferencingFactory.<Request>referenceFactory()).to(new TypeLiteral<Ref<Request>>() {
-        }).in(RequestScoped.class);
-
-        // SecurityContext must be injected using the Injectee. The reason is that
-        // SecurityContext can be changed by filters but it looks like the proxy internally caches
-        // the first SecurityContext value injected in the RequestScope. This is
-        bindAsContract(SecurityContextInjectee.class).to(SecurityContext.class)
-                .proxy(true).proxyForSameScope(false).in(RequestScoped.class);
-
-    }
-
-    @SuppressWarnings("JavaDoc")
-    private static class UriInfoReferencingFactory extends ReferencingFactory<UriInfo> {
-        @Inject
-        public UriInfoReferencingFactory(Provider<Ref<UriInfo>> referenceFactory) {
-            super(referenceFactory);
-        }
-    }
-
-    @SuppressWarnings("JavaDoc")
-    private static class HttpHeadersReferencingFactory extends ReferencingFactory<HttpHeaders> {
-        @Inject
-        public HttpHeadersReferencingFactory(Provider<Ref<HttpHeaders>> referenceFactory) {
-            super(referenceFactory);
-        }
-    }
-
-    @SuppressWarnings("JavaDoc")
-    private static class RequestReferencingFactory extends ReferencingFactory<Request> {
-        @Inject
-        public RequestReferencingFactory(Provider<Ref<Request>> referenceFactory) {
-            super(referenceFactory);
-        }
     }
 }

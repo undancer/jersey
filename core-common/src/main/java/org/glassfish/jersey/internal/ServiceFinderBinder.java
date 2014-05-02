@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2011-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -44,7 +44,6 @@ import java.util.Map;
 import javax.ws.rs.RuntimeType;
 
 import org.glassfish.jersey.CommonProperties;
-import org.glassfish.jersey.internal.util.PropertiesHelper;
 
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 
@@ -84,11 +83,11 @@ public class ServiceFinderBinder<T> extends AbstractBinder {
         final boolean METAINF_SERVICES_LOOKUP_DISABLE_DEFAULT = false;
         boolean disableMetainfServicesLookup = METAINF_SERVICES_LOOKUP_DISABLE_DEFAULT;
         if (applicationProperties != null) {
-            disableMetainfServicesLookup = PropertiesHelper.getValue(applicationProperties, runtimeType,
+            disableMetainfServicesLookup = CommonProperties.getValue(applicationProperties, runtimeType,
                     CommonProperties.METAINF_SERVICES_LOOKUP_DISABLE, METAINF_SERVICES_LOOKUP_DISABLE_DEFAULT, Boolean.class);
         }
         if (!disableMetainfServicesLookup) {
-            for (T t : ServiceFinder.find(contract, true)) {
+            for (Class<T> t : ServiceFinder.find(contract, true).toClassArray()) {
                 bind(t).to(contract);
             }
         }

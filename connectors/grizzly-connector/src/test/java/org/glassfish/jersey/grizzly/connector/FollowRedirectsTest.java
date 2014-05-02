@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -39,10 +39,13 @@
  */
 package org.glassfish.jersey.grizzly.connector;
 
+import java.io.IOException;
+
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
-import javax.ws.rs.client.Client;
-import javax.ws.rs.client.ClientBuilder;
+import javax.ws.rs.client.ClientRequestContext;
+import javax.ws.rs.client.ClientResponseContext;
+import javax.ws.rs.client.ClientResponseFilter;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.Response;
@@ -50,16 +53,18 @@ import javax.ws.rs.core.UriBuilder;
 
 import org.glassfish.jersey.client.ClientConfig;
 import org.glassfish.jersey.client.ClientProperties;
-import org.glassfish.jersey.server.ApplicationHandler;
+import org.glassfish.jersey.client.ClientResponse;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
-import org.glassfish.jersey.test.spi.TestContainer;
 
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 
 /**
- * @author Martin Matula (martin.matula at oracle.com)
+ * Grizzly connector follow redirect tests.
+ *
+ * @author Martin Matula
+ * @author Marek Potociar (marek.potociar at oracle.com)
  */
 public class FollowRedirectsTest extends JerseyTest {
     @Path("/test")
@@ -82,17 +87,33 @@ public class FollowRedirectsTest extends JerseyTest {
     }
 
     @Override
-    protected Client getClient(TestContainer tc, ApplicationHandler applicationHandler) {
-        Client c = super.getClient(tc, applicationHandler);
-        ClientConfig cc = new ClientConfig().connector(new GrizzlyConnector(c.getConfiguration()));
-        return ClientBuilder.newClient(cc);
+    protected void configureClient(ClientConfig config) {
+        config.connectorProvider(new GrizzlyConnectorProvider());
+    }
+
+    private static class RedirectTestFilter implements ClientResponseFilter {
+        public static final String RESOLVED_URI_HEADER = "resolved-uri";
+
+        @Override
+        public void filter(ClientRequestContext requestContext, ClientResponseContext responseContext) throws IOException {
+            if (responseContext instanceof ClientResponse) {
+                ClientResponse clientResponse = (ClientResponse) responseContext;
+                responseContext.getHeaders().putSingle(RESOLVED_URI_HEADER, clientResponse.getResolvedRequestUri().toString());
+            }
+        }
     }
 
     @Test
     public void testDoFollow() {
-        Response r = target("test/redirect").request().get();
+        Response r = target("test/redirect")
+                .register(RedirectTestFilter.class)
+                .request().get();
         assertEquals(200, r.getStatus());
         assertEquals("GET", r.readEntity(String.class));
+// TODO uncomment as part of JERSEY-2388 fix.
+//        assertEquals(
+//                UriBuilder.fromUri(getBaseUri()).path(RedirectResource.class).build().toString(),
+//                r.getHeaderString(RedirectTestFilter.RESOLVED_URI_HEADER));
     }
 
     @Test

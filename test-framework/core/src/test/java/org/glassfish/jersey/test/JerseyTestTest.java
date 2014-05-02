@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2011-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -40,25 +40,27 @@
 package org.glassfish.jersey.test;
 
 import java.net.URI;
+import java.security.AccessController;
 
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
+import javax.ws.rs.core.Application;
 
 import org.glassfish.jersey.client.ClientConfig;
-import org.glassfish.jersey.server.ApplicationHandler;
+import org.glassfish.jersey.internal.util.PropertiesHelper;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.spi.TestContainer;
 import org.glassfish.jersey.test.spi.TestContainerException;
 import org.glassfish.jersey.test.spi.TestContainerFactory;
 
-import org.glassfish.hk2.utilities.binding.AbstractBinder;
-
 import org.junit.Test;
-
-import static junit.framework.Assert.assertEquals;
+import static org.junit.Assert.assertEquals;
 
 /**
+ * {@link org.glassfish.jersey.test.JerseyTest} unit tests.
+ *
  * @author Pavel Bucek (pavel.bucek at oracle.com)
+ * @author Marek Potociar (marek.potociar at oracle.com)
  */
 public class JerseyTestTest {
 
@@ -74,7 +76,7 @@ public class JerseyTestTest {
     public static class MyTestContainerFactory implements TestContainerFactory {
 
         @Override
-        public TestContainer create(URI baseUri, ApplicationHandler application) throws IllegalArgumentException {
+        public TestContainer create(final URI baseUri, final DeploymentContext context) throws IllegalArgumentException {
             return new TestContainer() {
 
                 @Override
@@ -84,7 +86,7 @@ public class JerseyTestTest {
 
                 @Override
                 public URI getBaseUri() {
-                    return null;
+                    return baseUri;
                 }
 
                 @Override
@@ -98,18 +100,15 @@ public class JerseyTestTest {
         }
     }
 
-    public static class MyBinder extends AbstractBinder {
+    private static class MyJerseyTest extends JerseyTest {
+        @Override
+        protected Application configure() {
+            return new ResourceConfig(MyResource.class);
+        }
 
         @Override
-        public void configure() {
-            bind(MyTestContainerFactory.class).to(TestContainerFactory.class);
-        }
-    }
-
-    private static class MyJerseyTest extends JerseyTest {
-
-        private MyJerseyTest() throws TestContainerException {
-            super(new ResourceConfig(MyResource.class).register(new MyBinder()));
+        protected TestContainerFactory getTestContainerFactory() throws TestContainerException {
+            return new MyTestContainerFactory();
         }
     }
 
@@ -119,4 +118,29 @@ public class JerseyTestTest {
 
         assertEquals(myJerseyTest.getTestContainerFactory().getClass(), MyTestContainerFactory.class);
     }
+
+    @Test
+    public void testOverridePortNumber() {
+        final int newPort = TestProperties.DEFAULT_CONTAINER_PORT + 1;
+        MyJerseyTest myJerseyTest = new MyJerseyTest() {
+            @Override
+            protected Application configure() {
+                forceSet(TestProperties.CONTAINER_PORT, Integer.toString(newPort));
+                return super.configure();
+            }
+        };
+
+        assertEquals(newPort, myJerseyTest.getPort());
+    }
+
+    @Test
+    public void testThatDefaultContainerPortIsUsed() {
+        MyJerseyTest myJerseyTest = new MyJerseyTest();
+
+        String portValue = AccessController.doPrivileged(PropertiesHelper.getSystemProperty(TestProperties.CONTAINER_PORT,
+                String.valueOf(TestProperties.DEFAULT_CONTAINER_PORT)));
+
+        assertEquals(Integer.valueOf(portValue).intValue(), myJerseyTest.getPort());
+    }
+
 }

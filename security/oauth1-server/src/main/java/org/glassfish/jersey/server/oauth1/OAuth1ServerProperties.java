@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -40,11 +40,17 @@
 
 package org.glassfish.jersey.server.oauth1;
 
+import java.util.Map;
+
+import org.glassfish.jersey.internal.util.PropertiesClass;
+import org.glassfish.jersey.internal.util.PropertiesHelper;
+
 /**
  * Properties used to configure OAuth server module.
  *
  * @author Miroslav Fuksa (miroslav.fuksa at oracle.com)
  */
+@PropertiesClass
 public final class OAuth1ServerProperties {
     /**
      * OAuth realm (String property).
@@ -91,9 +97,48 @@ public final class OAuth1ServerProperties {
     /**
      * Property that can be set to frequency of collecting nonces exceeding max. age (default = 100 = every 100 requests).
      *
-     * */
+     **/
     public static final String GC_PERIOD = "jersey.config.server.oauth1.gcPeriod";
 
+
+    /**
+     * Unit of {@code oauth_timestamp} attribute used in authorization headers. The value must be one of the
+     * enum values of {@link java.util.concurrent.TimeUnit} (e.g. {@code SECONDS},
+     * {@code MILLISECONDS}, {@code MINUTES}).
+     * <p>
+     * A default value is {@code SECONDS}.
+     * </p>
+     *
+     * <p>
+     * The name of the configuration property is <tt>{@value}</tt>.
+     * </p>
+     */
+    public static final String TIMESTAMP_UNIT = "jersey.config.server.oauth1.timestamp.unit";
+
+
+    /**
+     * Defines maximum number of nonces that can be stored in the nonce cache. If more nonces will be used,
+     * the cache will not store any other nonce and requests will be refused. Note that cache is automatically
+     * cleaned as it keeps only nonces delivered with timestamp withing the {@link #MAX_AGE} period.
+     * <p>
+     * This setting is used to limit the maximum size of internal cache and thanks to this
+     * it prevents exhausting of memory and failing of the server.
+     * </p>
+     *
+     * <p>
+     * The value must be a long.
+     * </p>
+
+     * <p>
+     * A default value is {@code 2000000}.
+     * </p>
+     *
+     * <p>
+     * The name of the configuration property is <tt>{@value}</tt>.
+     * </p>
+     *
+    */
+    public static final String MAX_NONCE_CACHE_SIZE = "jersey.config.server.oauth1.max.nonce.size";
 
     /**
      * If set to {@code true} makes the correct OAuth authentication optional.
@@ -163,4 +208,60 @@ public final class OAuth1ServerProperties {
      * </p>
      */
     public static final String ACCESS_TOKEN_URI = "jersey.config.server.oauth1.resource.accessToken.uri";
+
+    /**
+     * Get the value of the specified property.
+     *
+     * If the property is not set or the real value type is not compatible with the specified value type,
+     * returns {@code null}.
+     *
+     * @param properties    Map of properties to get the property value from.
+     * @param key  Name of the property.
+     * @param type          Type to retrieve the value as.
+     * @param <T>           Type of the property value.
+     * @return              Value of the property or {@code null}.
+     *
+     * @since 2.8
+     */
+    public static <T> T getValue(Map<String, ?> properties, String key, Class<T> type) {
+        return PropertiesHelper.getValue(properties, key, type, null);
+    }
+
+    /**
+     * Get the value of the specified property.
+     *
+     * If the property is not set or the real value type is not compatible with {@code defaultValue} type,
+     * the specified {@code defaultValue} is returned. Calling this method is equivalent to calling
+     * {@code OAuth1ServerProperties.getValue(properties, key, defaultValue, (Class<T>) defaultValue.getClass())}
+     *
+     * @param properties    Map of properties to get the property value from.
+     * @param key  Name of the property.
+     * @param defaultValue  Default value if property is not registered
+     * @param <T>           Type of the property value.
+     * @return              Value of the property or {@code null}.
+     *
+     * @since 2.8
+     */
+    public static <T> T getValue(Map<String, ?> properties, String key, T defaultValue) {
+        return PropertiesHelper.getValue(properties, key, defaultValue, null);
+    }
+
+    /**
+     * Get the value of the specified property.
+     *
+     * If the property is not set or the real value type is not compatible with the specified value type,
+     * returns {@code defaultValue}.
+     *
+     * @param properties    Map of properties to get the property value from.
+     * @param key  Name of the property.
+     * @param defaultValue  Default value if property is not registered
+     * @param type          Type to retrieve the value as.
+     * @param <T>           Type of the property value.
+     * @return              Value of the property or {@code null}.
+     *
+     * @since 2.8
+     */
+    public static <T> T getValue(Map<String, ?> properties, String key, T defaultValue, Class<T> type) {
+        return PropertiesHelper.getValue(properties, key, defaultValue, type, null);
+    }
 }

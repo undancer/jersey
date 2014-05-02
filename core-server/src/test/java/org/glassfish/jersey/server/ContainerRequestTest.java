@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -198,29 +198,27 @@ public class ContainerRequestTest {
                 Response.Status.PRECONDITION_FAILED.getStatusCode());
     }
 
-    @Test
-    public void testAbsoluteUriInPath() throws Exception {
-        final String absoluteUri = "http://example.org/app//resource";
-
-        for (final String path : new String[] {"/", "/a/", "/a/b/"}) {
-            final ContainerRequest request = new ContainerRequest(
-                    URI.create("http://example.org/"), URI.create(path + absoluteUri),
-                    "GET", SECURITY_CONTEXT, new MapPropertiesDelegate());
-
-            assertEquals(path + absoluteUri, request.getPath(true));
-        }
+    private ContainerRequest getContainerRequestForPreconditionsTest() {
+        return new ContainerRequest(URI.create("http://example.org"),
+                    URI.create("http://example.org/app/respource"), "GET", SECURITY_CONTEXT, new MapPropertiesDelegate());
     }
 
-    @Test
-    public void testAbsoluteUriInPathWithNormalization() throws Exception {
-        final String absoluteUri = "http://example.org/app//resource";
+    @Test(expected = IllegalArgumentException.class)
+    public void testEvaluatePreconditionsDateNull() {
+        ContainerRequest r = getContainerRequestForPreconditionsTest();
+        r.evaluatePreconditions((Date) null);
+    }
 
-        for (final String path : new String[] {"/", "/a//", "/a//b/", "/a/b//"}) {
-            final ContainerRequest request = new ContainerRequest(
-                    URI.create("http://example.org/"), URI.create(path + absoluteUri),
-                    "GET", SECURITY_CONTEXT, new MapPropertiesDelegate());
 
-            assertEquals(URI.create(path).normalize().toString() + absoluteUri, request.getPath(true));
-        }
+    @Test(expected = IllegalArgumentException.class)
+    public void testEvaluatePreconditionsEntityTagNull() {
+        ContainerRequest r = getContainerRequestForPreconditionsTest();
+        r.evaluatePreconditions((EntityTag) null);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testEvaluatePreconditionsBothNull() {
+        ContainerRequest r = getContainerRequestForPreconditionsTest();
+        r.evaluatePreconditions(null, null);
     }
 }

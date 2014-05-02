@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -74,8 +74,8 @@ import org.glassfish.jersey.server.model.Resource;
 import org.glassfish.hk2.api.ServiceLocator;
 import org.glassfish.hk2.utilities.Binder;
 
-import com.google.common.base.Predicate;
-import com.google.common.collect.Sets;
+import jersey.repackaged.com.google.common.base.Predicate;
+import jersey.repackaged.com.google.common.collect.Sets;
 
 /**
  * The resource configuration for configuring a web application.
@@ -620,9 +620,11 @@ public class ResourceConfig extends Application implements Configurable<Resource
      * The name should be unique in the runtime.
      *
      * @param applicationName Unique application name.
+     * @return updated resource configuration instance.
      */
-    public final void setApplicationName(String applicationName) {
+    public final ResourceConfig setApplicationName(String applicationName) {
         state.setApplicationName(applicationName);
+        return this;
     }
 
     /**
@@ -1096,6 +1098,8 @@ public class ResourceConfig extends Application implements Configurable<Resource
                 rc.invalidateCache();
                 rc.addProperties(super.getProperties());
                 super.addProperties(rc.getProperties());
+                super.setApplicationName(rc.getApplicationName());
+                super.setClassLoader(rc.getClassLoader());
 
                 rc.lock();
             } else if (application != null) {
@@ -1208,13 +1212,16 @@ public class ResourceConfig extends Application implements Configurable<Resource
             });
         }
 
-        private RuntimeConfig(Application application) {
+        private RuntimeConfig(final Application application) {
             super();
 
             this.application = application;
 
             if (application != null) {
                 registerComponentsOf(application);
+
+                // Copy all available properties.
+                addProperties(application.getProperties());
             }
 
             originalRegistrations = super.getRegisteredClasses();
@@ -1261,8 +1268,7 @@ public class ResourceConfig extends Application implements Configurable<Resource
     }
 
     private void setupApplicationName() {
-        final String appName = PropertiesHelper.getValue(getProperties(),
-                ServerProperties.APPLICATION_NAME, null, String.class);
+        final String appName = ServerProperties.getValue(getProperties(), ServerProperties.APPLICATION_NAME, null, String.class);
         if (appName != null && getApplicationName() == null) {
             setApplicationName(appName);
         }

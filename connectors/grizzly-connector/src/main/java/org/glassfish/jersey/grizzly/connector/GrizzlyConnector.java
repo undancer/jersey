@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -39,6 +39,7 @@
  */
 package org.glassfish.jersey.grizzly.connector;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
@@ -59,16 +60,17 @@ import javax.ws.rs.core.Response;
 import org.glassfish.jersey.client.ClientProperties;
 import org.glassfish.jersey.client.ClientRequest;
 import org.glassfish.jersey.client.ClientResponse;
-import org.glassfish.jersey.client.JerseyClient;
+import org.glassfish.jersey.client.RequestEntityProcessing;
 import org.glassfish.jersey.client.spi.AsyncConnectorCallback;
 import org.glassfish.jersey.client.spi.Connector;
 import org.glassfish.jersey.internal.Version;
-import org.glassfish.jersey.internal.util.PropertiesHelper;
 import org.glassfish.jersey.internal.util.collection.ByteBufferInputStream;
 import org.glassfish.jersey.internal.util.collection.NonBlockingInputStream;
+import org.glassfish.jersey.message.internal.HeaderUtils;
 import org.glassfish.jersey.message.internal.OutboundMessageContext;
 
-import com.google.common.util.concurrent.SettableFuture;
+import org.glassfish.grizzly.memory.Buffers;
+import org.glassfish.grizzly.memory.MemoryManager;
 
 import com.ning.http.client.AsyncHandler;
 import com.ning.http.client.AsyncHttpClient;
@@ -78,36 +80,80 @@ import com.ning.http.client.HttpResponseHeaders;
 import com.ning.http.client.HttpResponseStatus;
 import com.ning.http.client.Request;
 import com.ning.http.client.RequestBuilder;
+import com.ning.http.client.providers.grizzly.FeedableBodyGenerator;
 import com.ning.http.client.providers.grizzly.GrizzlyAsyncHttpProvider;
+
+import jersey.repackaged.com.google.common.util.concurrent.SettableFuture;
 
 /**
  * The transport using the AsyncHttpClient.
  *
  * @author Stepan Kopriva (stepan.kopriva at oracle.com)
+ * @author Marek Potociar (marek.potociar at oracle.com)
  */
-public class GrizzlyConnector implements Connector {
-    private volatile AsyncHttpClient grizzlyClient = null;
-    private final Configuration config;
+class GrizzlyConnector implements Connector {
 
-    private final Object LOCK = new Object();
+    private final AsyncHttpClient grizzlyClient;
 
     /**
-     * Create the new Grizzly async client connector.
+     * Create new connector based on Grizzly asynchronous client library.
      *
-     * @param config client configuration.
+     * @param client Jersey client instance to create the connector for.
+     * @param config Jersey client runtime configuration to be used to configure the connector parameters.
      */
-    public GrizzlyConnector(Configuration config) {
-        this.config = config;
+    GrizzlyConnector(Client client, Configuration config) {
+        AsyncHttpClientConfig.Builder builder = new AsyncHttpClientConfig.Builder();
+
+        ExecutorService executorService;
+        if (config != null) {
+            final Object threadPoolSize = config.getProperties().get(ClientProperties.ASYNC_THREADPOOL_SIZE);
+
+            if (threadPoolSize != null && threadPoolSize instanceof Integer && (Integer) threadPoolSize > 0) {
+                executorService = Executors.newFixedThreadPool((Integer) threadPoolSize);
+            } else {
+                executorService = Executors.newCachedThreadPool();
+            }
+
+            builder = builder.setExecutorService(executorService);
+
+            builder.setConnectionTimeoutInMs(ClientProperties.getValue(config.getProperties(),
+                    ClientProperties.CONNECT_TIMEOUT, 0));
+
+            builder.setRequestTimeoutInMs(ClientProperties.getValue(config.getProperties(),
+                    ClientProperties.READ_TIMEOUT, 0));
+        } else {
+            executorService = Executors.newCachedThreadPool();
+            builder.setExecutorService(executorService);
+        }
+
+        builder.setAllowPoolingConnection(true);
+        if (client.getSslContext() != null) {
+            builder.setSSLContext(client.getSslContext());
+        }
+        if (client.getHostnameVerifier() != null) {
+            builder.setHostnameVerifier(client.getHostnameVerifier());
+        }
+        AsyncHttpClientConfig asyncClientConfig = builder.build();
+
+        this.grizzlyClient = new AsyncHttpClient(new GrizzlyAsyncHttpProvider(asyncClientConfig), asyncClientConfig);
     }
 
+    /**
+     * Get the underlying Grizzly {@link com.ning.http.client.AsyncHttpClient} instance.
+     *
+     * @return underlying Grizzly {@link com.ning.http.client.AsyncHttpClient} instance.
+     */
+    public AsyncHttpClient getGrizzlyClient() {
+        return grizzlyClient;
+    }
 
     /*
-     * Sends the {@link javax.ws.rs.core.Request} via Grizzly transport and returns the {@link javax.ws.rs.core.Response}.
-     */
+         * Sends the {@link javax.ws.rs.core.Request} via Grizzly transport and returns the {@link javax.ws.rs.core.Response}.
+         */
     @Override
     public ClientResponse apply(final ClientRequest request) {
-        AsyncHttpClient grizzlyClient = getClient(request);
         final Request connectorRequest = translate(request);
+        final Map<String, String> clientHeadersSnapshot = writeOutBoundHeaders(request.getHeaders(), connectorRequest);
 
         final SettableFuture<ClientResponse> responseFuture = SettableFuture.create();
         final ByteBufferInputStream entityStream = new ByteBufferInputStream();
@@ -129,6 +175,9 @@ public class GrizzlyConnector implements Connector {
                         return STATE.ABORT;
                     }
 
+                    HeaderUtils.checkHeaderChanges(clientHeadersSnapshot, request.getHeaders(),
+                            GrizzlyConnector.this.getClass().getName());
+
                     responseFuture.set(translate(request, this.status, headers, entityStream));
                     return STATE.CONTINUE;
                 }
@@ -147,7 +196,6 @@ public class GrizzlyConnector implements Connector {
 
                 @Override
                 public void onThrowable(Throwable t) {
-                    t.printStackTrace();
                     entityStream.closeQueue(t);
 
                     if (futureSet.compareAndSet(false, true)) {
@@ -168,68 +216,16 @@ public class GrizzlyConnector implements Connector {
         }
     }
 
-    private AsyncHttpClient getClient(ClientRequest request) {
-        final JerseyClient jerseyClient = request.getClient();
-        AsyncHttpClient client = grizzlyClient;
-        if (client == null) {
-            synchronized (LOCK) {
-                client = grizzlyClient;
-                if (client == null) {
-                    client = createClient(jerseyClient);
-                    grizzlyClient = client;
-                }
-            }
-        }
-        return client;
-    }
-
-    private AsyncHttpClient createClient(Client client) {
-        AsyncHttpClientConfig.Builder builder = new AsyncHttpClientConfig.Builder();
-
-        ExecutorService executorService;
-        if (config != null) {
-            final Object threadPoolSize = config.getProperties().get(ClientProperties.ASYNC_THREADPOOL_SIZE);
-
-            if (threadPoolSize != null && threadPoolSize instanceof Integer && (Integer) threadPoolSize > 0) {
-                executorService = Executors.newFixedThreadPool((Integer) threadPoolSize);
-            } else {
-                executorService = Executors.newCachedThreadPool();
-            }
-
-            builder = builder.setExecutorService(executorService);
-
-            builder.setConnectionTimeoutInMs(PropertiesHelper.getValue(config.getProperties(),
-                    ClientProperties.CONNECT_TIMEOUT, 0));
-
-            builder.setRequestTimeoutInMs(PropertiesHelper.getValue(config.getProperties(),
-                    ClientProperties.READ_TIMEOUT, 0));
-        } else {
-            executorService = Executors.newCachedThreadPool();
-            builder.setExecutorService(executorService);
-        }
-
-        builder.setAllowPoolingConnection(true);
-        if (client.getSslContext() != null) {
-            builder.setSSLContext(client.getSslContext());
-        }
-        if (client.getHostnameVerifier() != null) {
-            builder.setHostnameVerifier(client.getHostnameVerifier());
-        }
-        AsyncHttpClientConfig asyncClientConfig = builder.build();
-
-        return new AsyncHttpClient(new GrizzlyAsyncHttpProvider(asyncClientConfig), asyncClientConfig);
-    }
-
-
     @Override
     public Future<?> apply(final ClientRequest request, final AsyncConnectorCallback callback) {
         final Request connectorRequest = translate(request);
+        final Map<String, String> clientHeadersSnapshot = writeOutBoundHeaders(request.getHeaders(), connectorRequest);
         final ByteBufferInputStream entityStream = new ByteBufferInputStream();
         final AtomicBoolean callbackInvoked = new AtomicBoolean(false);
 
         Throwable failure;
         try {
-            return getClient(request).executeRequest(connectorRequest, new AsyncHandler<Void>() {
+            return grizzlyClient.executeRequest(connectorRequest, new AsyncHandler<Void>() {
                 private volatile HttpResponseStatus status = null;
 
                 @Override
@@ -243,6 +239,9 @@ public class GrizzlyConnector implements Connector {
                     if (!callbackInvoked.compareAndSet(false, true)) {
                         return STATE.ABORT;
                     }
+
+                    HeaderUtils.checkHeaderChanges(clientHeadersSnapshot, request.getHeaders(),
+                            GrizzlyConnector.this.getClass().getName());
 
                     callback.response(translate(request, this.status, headers, entityStream));
                     return STATE.CONTINUE;
@@ -286,9 +285,7 @@ public class GrizzlyConnector implements Connector {
 
     @Override
     public void close() {
-        if (grizzlyClient != null) {
-            grizzlyClient.close();
-        }
+        grizzlyClient.close();
     }
 
     private ClientResponse translate(final ClientRequest requestContext,
@@ -315,7 +312,6 @@ public class GrizzlyConnector implements Connector {
 
         for (Map.Entry<String, List<String>> entry : headers.getHeaders().entrySet()) {
             for (String value : entry.getValue()) {
-                // TODO value.toString?
                 responseContext.getHeaders().add(entry.getKey(), value);
             }
         }
@@ -331,47 +327,112 @@ public class GrizzlyConnector implements Connector {
 
         RequestBuilder builder = new RequestBuilder(strMethod).setUrl(uri.toString());
 
-        builder.setFollowRedirects(PropertiesHelper.getValue(requestContext.getConfiguration().getProperties(), ClientProperties.FOLLOW_REDIRECTS,
-                true));
+        builder.setFollowRedirects(requestContext.resolveProperty(ClientProperties.FOLLOW_REDIRECTS, true));
 
-        final com.ning.http.client.Request.EntityWriter entity = this.getHttpEntity(requestContext);
+        if (requestContext.hasEntity()) {
 
-        if (entity != null) {
-            builder = builder.setBody(entity);
-        }
+            final RequestEntityProcessing entityProcessing =
+                    requestContext.resolveProperty(ClientProperties.REQUEST_ENTITY_PROCESSING, RequestEntityProcessing.class);
 
-        com.ning.http.client.Request result = builder.build();
-        writeOutBoundHeaders(requestContext.getHeaders(), result);
-
-        return result;
-    }
-
-    private static void writeOutBoundHeaders(final MultivaluedMap<String, Object> headers,
-                                             final com.ning.http.client.Request request) {
-        for (Map.Entry<String, List<Object>> e : headers.entrySet()) {
-            List<Object> vs = e.getValue();
-            if (vs.size() == 1) {
-                request.getHeaders().add(e.getKey(), vs.get(0).toString());
-            } else {
-                StringBuilder b = new StringBuilder();
-                for (Object v : e.getValue()) {
-                    if (b.length() > 0) {
-                        b.append(',');
-                    }
-                    b.append(v);
+            if (entityProcessing == RequestEntityProcessing.BUFFERED) {
+                byte[] entityBytes = bufferEntity(requestContext);
+                builder = builder.setBody(entityBytes);
+            } else if (entityProcessing == RequestEntityProcessing.CHUNKED) {
+                final FeedableBodyGenerator bodyGenerator = new FeedableBodyGenerator();
+                final Integer chunkSize = requestContext.resolveProperty(ClientProperties.CHUNKED_ENCODING_SIZE, Integer.valueOf(0));
+                if (chunkSize > 0) {
+                    bodyGenerator.setMaxPendingBytes(chunkSize);
                 }
-                request.getHeaders().add(e.getKey(), b.toString());
+                final FeedableBodyGenerator.Feeder feeder = new FeedableBodyGenerator.SimpleFeeder(bodyGenerator) {
+                    @Override
+                    public void flush() throws IOException {
+                        requestContext.writeEntity();
+                    }
+                };
+                requestContext.setStreamProvider(new OutboundMessageContext.StreamProvider() {
+
+                    @Override
+                    public OutputStream getOutputStream(int contentLength) throws IOException {
+                        return new FeederAdapter(feeder);
+                    }
+                });
+                bodyGenerator.setFeeder(feeder);
+                builder.setBody(bodyGenerator);
+            } else {
+                builder.setBody(getEntityWriter(requestContext));
             }
         }
+        return builder.build();
     }
 
-    private com.ning.http.client.Request.EntityWriter getHttpEntity(final ClientRequest requestContext) {
-        final Object entity = requestContext.getEntity();
+    /**
+     * Utility OutputStream implementation that can feed Grizzly chunk-encoded body generator.
+     */
+    private class FeederAdapter extends OutputStream {
 
-        if (entity == null) {
-            return null;
+        final FeedableBodyGenerator.Feeder delegate;
+
+        /**
+         * Get me a new adapter for given feeder.
+         *
+         * @param bodyFeeder adaptee to get fed as an output stream.
+         */
+        FeederAdapter(FeedableBodyGenerator.Feeder bodyFeeder) {
+            this.delegate = bodyFeeder;
         }
 
+        @Override
+        public void write(int b) throws IOException {
+            final byte[] buffer = new byte[1];
+            buffer[0] = (byte) b;
+            delegate.feed(Buffers.wrap(MemoryManager.DEFAULT_MEMORY_MANAGER, buffer), false);
+        }
+
+        @Override
+        public void write(byte[] b) throws IOException {
+            delegate.feed(Buffers.wrap(MemoryManager.DEFAULT_MEMORY_MANAGER, b), false);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            delegate.feed(Buffers.wrap(MemoryManager.DEFAULT_MEMORY_MANAGER, b, off, len), false);
+        }
+
+        @Override
+        public void close() throws IOException {
+            delegate.feed(Buffers.EMPTY_BUFFER, true);
+        }
+    }
+
+    @SuppressWarnings("MagicNumber")
+    private byte[] bufferEntity(ClientRequest requestContext) {
+        final ByteArrayOutputStream baos = new ByteArrayOutputStream(512);
+        requestContext.setStreamProvider(new OutboundMessageContext.StreamProvider() {
+
+            @Override
+            public OutputStream getOutputStream(int contentLength) throws IOException {
+                return baos;
+            }
+        });
+        try {
+            requestContext.writeEntity();
+        } catch (IOException e) {
+            throw new ProcessingException(LocalizationMessages.ERROR_BUFFERING_ENTITY(), e);
+        }
+        return baos.toByteArray();
+    }
+
+    private static Map<String, String> writeOutBoundHeaders(final MultivaluedMap<String, Object> headers,
+                                                            final com.ning.http.client.Request request) {
+        Map<String, String> stringHeaders = HeaderUtils.asStringHeadersSingleValue(headers);
+
+        for (Map.Entry<String, String> e : stringHeaders.entrySet()) {
+            request.getHeaders().add(e.getKey(), e.getValue());
+        }
+        return stringHeaders;
+    }
+
+    private com.ning.http.client.Request.EntityWriter getEntityWriter(final ClientRequest requestContext) {
         return new com.ning.http.client.Request.EntityWriter() {
             @Override
             public void writeEntity(final OutputStream out) throws IOException {

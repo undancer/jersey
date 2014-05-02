@@ -213,7 +213,7 @@ public class TraceSupportTest extends JerseyTest {
     }
 
     private Client getApacheClient() {
-        return ClientBuilder.newClient(new ClientConfig().connector(new ApacheConnector(client().getConfiguration())));
+        return ClientBuilder.newClient(new ClientConfig().connectorProvider(new ApacheConnectorProvider()));
     }
 
 

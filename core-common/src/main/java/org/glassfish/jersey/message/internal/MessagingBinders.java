@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -39,13 +39,13 @@
  */
 package org.glassfish.jersey.message.internal;
 
-
 import java.util.Map;
-import javax.inject.Singleton;
 
 import javax.ws.rs.RuntimeType;
 import javax.ws.rs.ext.MessageBodyReader;
 import javax.ws.rs.ext.MessageBodyWriter;
+
+import javax.inject.Singleton;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.SAXParserFactory;
 import javax.xml.stream.XMLInputFactory;
@@ -64,7 +64,13 @@ import org.glassfish.hk2.utilities.binding.AbstractBinder;
  * @author Marek Potociar (marek.potociar at oracle.com)
  * @author Libor Kramolis (libor.kramolis at oracle.com)
  */
-public class MessagingBinders {
+public final class MessagingBinders {
+
+    /**
+     * Prevents instantiation.
+     */
+    private MessagingBinders() {
+    }
 
     /**
      * Message body providers injection binder.
@@ -75,6 +81,12 @@ public class MessagingBinders {
 
         private final RuntimeType runtimeType;
 
+        /**
+         * Create new message body providers injection binder.
+         *
+         * @param applicationProperties map containing application properties. May be {@code null}.
+         * @param runtimeType runtime (client or server) where the binder is used.
+         */
         public MessageBodyProviders(Map<String, Object> applicationProperties, RuntimeType runtimeType) {
             this.applicationProperties = applicationProperties;
             this.runtimeType = runtimeType;

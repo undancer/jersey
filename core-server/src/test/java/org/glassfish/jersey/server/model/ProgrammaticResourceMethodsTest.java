@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2011-2012 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -53,9 +53,9 @@ import org.glassfish.jersey.server.RequestContextBuilder;
 import org.glassfish.jersey.server.ResourceConfig;
 
 import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
-import junit.framework.Assert;
-import static junit.framework.Assert.assertEquals;
 
 /**
  * Test of programmatic resource method additions.
@@ -201,15 +201,15 @@ public class ProgrammaticResourceMethodsTest {
         final Resource res = builder.build();
         final ResourceMethod method = res.getResourceMethods().get(0);
         final List<MediaType> consumedTypes = method.getConsumedTypes();
-        Assert.assertEquals(4, consumedTypes.size());
+        assertEquals(4, consumedTypes.size());
         final List<MediaType> producedTypes = method.getProducedTypes();
-        Assert.assertEquals(2, producedTypes.size());
-        Assert.assertTrue(consumedTypes.contains(MediaType.APPLICATION_XML_TYPE));
-        Assert.assertTrue(consumedTypes.contains(MediaType.TEXT_HTML_TYPE));
-        Assert.assertTrue(consumedTypes.contains(MediaType.TEXT_PLAIN_TYPE));
-        Assert.assertTrue(consumedTypes.contains(MediaType.APPLICATION_JSON_TYPE));
-        Assert.assertTrue(producedTypes.contains(MediaType.TEXT_HTML_TYPE));
-        Assert.assertTrue(producedTypes.contains(MediaType.APPLICATION_JSON_TYPE));
+        assertEquals(2, producedTypes.size());
+        assertTrue(consumedTypes.contains(MediaType.APPLICATION_XML_TYPE));
+        assertTrue(consumedTypes.contains(MediaType.TEXT_HTML_TYPE));
+        assertTrue(consumedTypes.contains(MediaType.TEXT_PLAIN_TYPE));
+        assertTrue(consumedTypes.contains(MediaType.APPLICATION_JSON_TYPE));
+        assertTrue(producedTypes.contains(MediaType.TEXT_HTML_TYPE));
+        assertTrue(producedTypes.contains(MediaType.APPLICATION_JSON_TYPE));
     }
 
     private void checkReturnedStatus(ContainerRequest req, ApplicationHandler app) throws Exception {

@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2011-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -63,7 +63,6 @@ import javax.ws.rs.ext.ReaderInterceptor;
 import javax.ws.rs.ext.WriterInterceptor;
 
 import javax.inject.Inject;
-import javax.inject.Provider;
 
 import org.glassfish.jersey.internal.inject.Injections;
 import org.glassfish.jersey.internal.inject.Providers;
@@ -78,10 +77,8 @@ import org.glassfish.jersey.server.ContainerRequest;
 import org.glassfish.jersey.server.ContainerResponse;
 import org.glassfish.jersey.server.internal.LocalizationMessages;
 import org.glassfish.jersey.server.internal.ProcessingProviders;
-import org.glassfish.jersey.server.internal.process.AsyncContext;
 import org.glassfish.jersey.server.internal.process.Endpoint;
-import org.glassfish.jersey.server.internal.process.RespondingContext;
-import org.glassfish.jersey.server.internal.routing.RoutingContext;
+import org.glassfish.jersey.server.internal.process.RequestProcessingContext;
 import org.glassfish.jersey.server.model.internal.ResourceMethodDispatcherFactory;
 import org.glassfish.jersey.server.model.internal.ResourceMethodInvocationHandlerFactory;
 import org.glassfish.jersey.server.monitoring.RequestEvent;
@@ -93,8 +90,8 @@ import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.hk2.utilities.cache.Cache;
 import org.glassfish.hk2.utilities.cache.Computable;
 
-import com.google.common.base.Function;
-import com.google.common.collect.Lists;
+import jersey.repackaged.com.google.common.base.Function;
+import jersey.repackaged.com.google.common.collect.Lists;
 
 /**
  * Server-side request-response {@link Inflector inflector} for invoking methods
@@ -105,9 +102,6 @@ import com.google.common.collect.Lists;
  */
 public class ResourceMethodInvoker implements Endpoint, ResourceInfo {
 
-    private final Provider<RoutingContext> routingContextProvider;
-    private final Provider<AsyncContext> asyncContextProvider;
-    private final Provider<RespondingContext> respondingContextProvider;
     private final ResourceMethod method;
     private final ResourceMethodDispatcher dispatcher;
     private final Method resourceMethod;
@@ -126,12 +120,6 @@ public class ResourceMethodInvoker implements Endpoint, ResourceInfo {
     public static class Builder {
 
         @Inject
-        private Provider<RoutingContext> routingContextProvider;
-        @Inject
-        private Provider<AsyncContext> asyncContextProvider;
-        @Inject
-        private Provider<RespondingContext> respondingContextProvider;
-        @Inject
         private ResourceMethodDispatcherFactory dispatcherProviderFactory;
         @Inject
         private ResourceMethodInvocationHandlerFactory invocationHandlerProviderFactory;
@@ -148,13 +136,10 @@ public class ResourceMethodInvoker implements Endpoint, ResourceInfo {
          * @return new resource method invoker instance.
          */
         public ResourceMethodInvoker build(
-                ResourceMethod method,
-                ProcessingProviders processingProviders
+                final ResourceMethod method,
+                final ProcessingProviders processingProviders
         ) {
             return new ResourceMethodInvoker(
-                    routingContextProvider,
-                    asyncContextProvider,
-                    respondingContextProvider,
                     dispatcherProviderFactory,
                     invocationHandlerProviderFactory,
                     method,
@@ -165,19 +150,13 @@ public class ResourceMethodInvoker implements Endpoint, ResourceInfo {
     }
 
     private ResourceMethodInvoker(
-            Provider<RoutingContext> routingContextProvider,
-            Provider<AsyncContext> asyncContextProvider,
-            Provider<RespondingContext> respondingContextProvider,
-            ResourceMethodDispatcher.Provider dispatcherProvider,
-            ResourceMethodInvocationHandlerProvider invocationHandlerProvider,
+            final ResourceMethodDispatcher.Provider dispatcherProvider,
+            final ResourceMethodInvocationHandlerProvider invocationHandlerProvider,
             final ResourceMethod method,
-            ProcessingProviders processingProviders,
+            final ProcessingProviders processingProviders,
             ServiceLocator locator,
-            Configuration globalConfig) {
+            final Configuration globalConfig) {
 
-        this.routingContextProvider = routingContextProvider;
-        this.asyncContextProvider = asyncContextProvider;
-        this.respondingContextProvider = respondingContextProvider;
 
         this.method = method;
         final Invocable invocable = method.getInvocable();
@@ -222,28 +201,28 @@ public class ResourceMethodInvoker implements Endpoint, ResourceInfo {
 
             if (contracts.contains(WriterInterceptor.class)) {
                 _writerInterceptors.add(
-                        new RankedProvider<WriterInterceptor>(
+                        new RankedProvider<>(
                                 (WriterInterceptor) provider,
                                 model.getPriority(WriterInterceptor.class)));
             }
 
             if (contracts.contains(ReaderInterceptor.class)) {
                 _readerInterceptors.add(
-                        new RankedProvider<ReaderInterceptor>(
+                        new RankedProvider<>(
                                 (ReaderInterceptor) provider,
                                 model.getPriority(ReaderInterceptor.class)));
             }
 
             if (contracts.contains(ContainerRequestFilter.class)) {
                 _requestFilters.add(
-                        new RankedProvider<ContainerRequestFilter>(
+                        new RankedProvider<>(
                                 (ContainerRequestFilter) provider,
                                 model.getPriority(ContainerRequestFilter.class)));
             }
 
             if (contracts.contains(ContainerResponseFilter.class)) {
                 _responseFilters.add(
-                        new RankedProvider<ContainerResponseFilter>(
+                        new RankedProvider<>(
                                 (ContainerResponseFilter) provider,
                                 model.getPriority(ContainerResponseFilter.class)));
             }
@@ -267,22 +246,23 @@ public class ResourceMethodInvoker implements Endpoint, ResourceInfo {
         this.responseFilters.addAll(_responseFilters);
     }
 
-    private <T> void addNameBoundProviders(Collection<RankedProvider<T>> targetCollection, final NameBound nameBound,
-                                           final MultivaluedMap<Class<? extends Annotation>,
-                                                   RankedProvider<T>> nameBoundProviders, final MultivaluedMap<RankedProvider<T>,
-            Class<? extends Annotation>> nameBoundProvidersInverse) {
-        MultivaluedMap<RankedProvider<T>, Class<? extends Annotation>> foundBindingsMap
-                = new MultivaluedHashMap<RankedProvider<T>, Class<? extends Annotation>>();
-        for (Class<? extends Annotation> nameBinding : nameBound.getNameBindings()) {
-            Iterable<RankedProvider<T>> providers = nameBoundProviders.get(nameBinding);
+    private <T> void addNameBoundProviders(
+            final Collection<RankedProvider<T>> targetCollection,
+            final NameBound nameBound,
+            final MultivaluedMap<Class<? extends Annotation>, RankedProvider<T>> nameBoundProviders,
+            final MultivaluedMap<RankedProvider<T>, Class<? extends Annotation>> nameBoundProvidersInverse) {
+
+        final MultivaluedMap<RankedProvider<T>, Class<? extends Annotation>> foundBindingsMap = new MultivaluedHashMap<>();
+        for (final Class<? extends Annotation> nameBinding : nameBound.getNameBindings()) {
+            final Iterable<RankedProvider<T>> providers = nameBoundProviders.get(nameBinding);
             if (providers != null) {
-                for (RankedProvider<T> provider : providers) {
+                for (final RankedProvider<T> provider : providers) {
                     foundBindingsMap.add(provider, nameBinding);
                 }
             }
         }
 
-        for (Map.Entry<RankedProvider<T>, List<Class<? extends Annotation>>> entry : foundBindingsMap.entrySet()) {
+        for (final Map.Entry<RankedProvider<T>, List<Class<? extends Annotation>>> entry : foundBindingsMap.entrySet()) {
             final RankedProvider<T> provider = entry.getKey();
             final List<Class<? extends Annotation>> foundBindings = entry.getValue();
             final List<Class<? extends Annotation>> providerBindings = nameBoundProvidersInverse.get(provider);
@@ -323,20 +303,21 @@ public class ResourceMethodInvoker implements Endpoint, ResourceInfo {
 
     @Override
     @SuppressWarnings("unchecked")
-    public ContainerResponse apply(final ContainerRequest requestContext) {
-        final Object resource = routingContextProvider.get().peekMatchedResource();
+    public ContainerResponse apply(final RequestProcessingContext processingContext) {
+        final ContainerRequest request = processingContext.request();
+        final Object resource = processingContext.routingContext().peekMatchedResource();
 
         if (method.isSuspendDeclared() || method.isManagedAsyncDeclared()) {
-            if (!asyncContextProvider.get().suspend()) {
+            if (!processingContext.asyncContext().suspend()) {
                 throw new ProcessingException(LocalizationMessages.ERROR_SUSPENDING_ASYNC_REQUEST());
             }
         }
 
         if (method.isManagedAsyncDeclared()) {
-            asyncContextProvider.get().invokeManaged(new Producer<Response>() {
+            processingContext.asyncContext().invokeManaged(new Producer<Response>() {
                 @Override
                 public Response call() {
-                    final Response response = invoke(requestContext, resource);
+                    final Response response = invoke(processingContext, resource);
                     if (method.isSuspendDeclared()) {
                         // we ignore any response returned from a method that injects AsyncResponse
                         return null;
@@ -346,37 +327,31 @@ public class ResourceMethodInvoker implements Endpoint, ResourceInfo {
             });
             return null; // return null on current thread
         } else {
-            return new ContainerResponse(requestContext, invoke(requestContext, resource));
+            // TODO replace with processing context factory method.
+            return new ContainerResponse(request, invoke(processingContext, resource));
         }
     }
 
-    private static final Cache<Method, Annotation[]> methodAnnotationCache = new Cache<Method, Annotation[]>(new Computable<Method, Annotation[]>() {
+    private static final Cache<Method, Annotation[]> methodAnnotationCache = new Cache<>(new Computable<Method, Annotation[]>() {
 
         @Override
-        public Annotation[] compute(Method m) {
+        public Annotation[] compute(final Method m) {
             return m.getDeclaredAnnotations();
         }
     });
 
-    private Response invoke(ContainerRequest requestContext, Object resource) {
+    private Response invoke(final RequestProcessingContext context, final Object resource) {
 
         Response jaxrsResponse;
-        requestContext.triggerEvent(RequestEvent.Type.RESOURCE_METHOD_START);
+        context.triggerEvent(RequestEvent.Type.RESOURCE_METHOD_START);
 
-        try {
-            jaxrsResponse = dispatcher.dispatch(resource, requestContext);
-        } finally {
-            requestContext.triggerEvent(RequestEvent.Type.RESOURCE_METHOD_FINISHED);
-        }
-
-        if (jaxrsResponse == null) {
-            jaxrsResponse = Response.noContent().build();
-        }
-
-        respondingContextProvider.get().push(new Function<ContainerResponse, ContainerResponse>() {
+        context.push(new Function<ContainerResponse, ContainerResponse>() {
             @Override
             public ContainerResponse apply(final ContainerResponse response) {
-                if (response == null) {
+                // Need to check whether the response is null or mapped from exception. In these cases we don't want to modify
+                // response with resource method metadata.
+                if (response == null
+                        || response.isMappedFromException()) {
                     return response;
                 }
 
@@ -387,14 +362,14 @@ public class ResourceMethodInvoker implements Endpoint, ResourceInfo {
                     if (entityAnn.length == 0) {
                         response.setEntityAnnotations(methodAnn);
                     } else {
-                        Annotation[] mergedAnn = Arrays.copyOf(methodAnn, methodAnn.length + entityAnn.length);
+                        final Annotation[] mergedAnn = Arrays.copyOf(methodAnn, methodAnn.length + entityAnn.length);
                         System.arraycopy(entityAnn, 0, mergedAnn, methodAnn.length, entityAnn.length);
                         response.setEntityAnnotations(mergedAnn);
                     }
                 }
 
                 if (response.hasEntity() && !(response.getEntityType() instanceof ParameterizedType)) {
-                    Type invocableType = invocable.getResponseType();
+                    final Type invocableType = invocable.getResponseType();
                     if (invocableType != null &&
                             Void.TYPE != invocableType &&
                             Void.class != invocableType &&
@@ -403,10 +378,20 @@ public class ResourceMethodInvoker implements Endpoint, ResourceInfo {
                         response.setEntityType(invocableType);
                     }
                 }
-                return response;
 
+                return response;
             }
         });
+
+        try {
+            jaxrsResponse = dispatcher.dispatch(resource, context.request());
+        } finally {
+            context.triggerEvent(RequestEvent.Type.RESOURCE_METHOD_FINISHED);
+        }
+
+        if (jaxrsResponse == null) {
+            jaxrsResponse = Response.noContent().build();
+        }
 
         return jaxrsResponse;
     }
@@ -416,7 +401,7 @@ public class ResourceMethodInvoker implements Endpoint, ResourceInfo {
      * wrapped by this invoker.
      *
      * @return All bound (dynamically or by name) request filters applicable to the {@link #getResourceMethod() resource
-     *         method}.
+     * method}.
      */
     public Iterable<RankedProvider<ContainerRequestFilter>> getRequestFilters() {
         return requestFilters;
@@ -427,7 +412,7 @@ public class ResourceMethodInvoker implements Endpoint, ResourceInfo {
      * wrapped by this invoker.
      *
      * @return All bound (dynamically or by name) response filters applicable to the {@link #getResourceMethod() resource
-     *         method}.
+     * method}.
      */
     public Iterable<RankedProvider<ContainerResponseFilter>> getResponseFilters() {
         return responseFilters;

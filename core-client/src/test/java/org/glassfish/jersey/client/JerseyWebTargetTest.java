@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -61,12 +61,12 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.fail;
 
-import com.google.common.collect.Lists;
-
-import junit.framework.Assert;
+import jersey.repackaged.com.google.common.collect.Lists;
 
 /**
- * @author Martin Matula (martin.matula at oracle.com)
+ * {@code JerseyWebTarget} implementation unit tests.
+ *
+ * @author Martin Matula
  */
 public class JerseyWebTargetTest {
     private JerseyClient client;
@@ -135,7 +135,7 @@ public class JerseyWebTargetTest {
         assertEquals("/v", uri.toString());
 
         uriBuilder = target.path("{a}").resolveTemplate("qqq", "qqq").getUriBuilder();
-        assertEquals("/%7Ba%7D", uriBuilder.build().toString());
+        assertEquals("/{a}", uriBuilder.toTemplate());
 
         uriBuilder = target.path("{a}").resolveTemplate("a", "v").resolveTemplate("a", "x").getUriBuilder();
         assertEquals("/v", uriBuilder.build().toString());
@@ -153,31 +153,31 @@ public class JerseyWebTargetTest {
         final JerseyWebTarget newTarget = target.path("path/{a}").queryParam("query", "{q}").resolveTemplate("a", "param-a");
         final JerseyUriBuilder uriBuilder = (JerseyUriBuilder) newTarget.getUriBuilder();
         uriBuilder.resolveTemplate("q", "param-q").resolveTemplate("a", "will-be-ignored");
-        Assert.assertEquals(URI.create("/path/param-a?query=param-q"), uriBuilder.build());
+        assertEquals(URI.create("/path/param-a?query=param-q"), uriBuilder.build());
 
         final UriBuilder uriBuilderNew = newTarget.resolveTemplate("a", "will-be-ignored").resolveTemplate("q",
                 "new-q").getUriBuilder();
-        Assert.assertEquals(URI.create("/path/param-a?query=new-q"), uriBuilderNew.build());
+        assertEquals(URI.create("/path/param-a?query=new-q"), uriBuilderNew.build());
     }
 
     @Test
     public void testResolveTemplate3() {
         final JerseyWebTarget webTarget = target.path("path/{a}").path("{b}").queryParam("query", "{q}")
                 .resolveTemplate("a", "param-a").resolveTemplate("q", "param-q");
-        Assert.assertEquals("/path/param-a/%7Bb%7D?query=param-q", webTarget.getUri().toString());
+        assertEquals("/path/param-a/{b}?query=param-q", webTarget.getUriBuilder().toTemplate());
         // resolve b in webTarget
-        Assert.assertEquals(URI.create("/path/param-a/param-b?query=param-q"), webTarget.resolveTemplate("b",
+        assertEquals(URI.create("/path/param-a/param-b?query=param-q"), webTarget.resolveTemplate("b",
                 "param-b").getUri());
 
         // check that original webTarget has not been changed
-        Assert.assertEquals("/path/param-a/%7Bb%7D?query=param-q", webTarget.getUri().toString());
+        assertEquals("/path/param-a/{b}?query=param-q", webTarget.getUriBuilder().toTemplate());
 
         // resolve b in UriBuilder
-        Assert.assertEquals(URI.create("/path/param-a/param-b?query=param-q"), ((JerseyUriBuilder) webTarget.getUriBuilder())
+        assertEquals(URI.create("/path/param-a/param-b?query=param-q"), ((JerseyUriBuilder) webTarget.getUriBuilder())
                 .resolveTemplate("b", "param-b").build());
 
         // resolve in build method
-        Assert.assertEquals(URI.create("/path/param-a/param-b?query=param-q"), ((JerseyUriBuilder) webTarget.getUriBuilder())
+        assertEquals(URI.create("/path/param-a/param-b?query=param-q"), ((JerseyUriBuilder) webTarget.getUriBuilder())
                 .build("param-b"));
     }
 
@@ -186,11 +186,11 @@ public class JerseyWebTargetTest {
     public void testResolveTemplateFromEncoded() {
         final String a = "a%20%3F/*/";
         final String b = "/b/";
-        Assert.assertEquals("/path/a%20%3F/*///b/", target.path("path/{a}/{b}").resolveTemplateFromEncoded("a",
+        assertEquals("/path/a%20%3F/*///b/", target.path("path/{a}/{b}").resolveTemplateFromEncoded("a",
                 a).resolveTemplateFromEncoded("b", b).getUri().toString());
-        Assert.assertEquals("/path/a%2520%253F%2F*%2F/%2Fb%2F", target.path("path/{a}/{b}").resolveTemplate("a",
+        assertEquals("/path/a%2520%253F%2F*%2F/%2Fb%2F", target.path("path/{a}/{b}").resolveTemplate("a",
                 a).resolveTemplate("b", b).getUri().toString());
-        Assert.assertEquals("/path/a%2520%253F/*///b/", target.path("path/{a}/{b}").resolveTemplate("a",
+        assertEquals("/path/a%2520%253F/*///b/", target.path("path/{a}/{b}").resolveTemplate("a",
                 a, false).resolveTemplate("b", b, false).getUri().toString());
     }
 
@@ -201,11 +201,11 @@ public class JerseyWebTargetTest {
         map.put("a", "a%20%3F/*/");
         map.put("b", "/b/");
 
-        Assert.assertEquals("/path/a%20%3F/*///b/", target.path("path/{a}/{b}").resolveTemplatesFromEncoded(map).getUri()
+        assertEquals("/path/a%20%3F/*///b/", target.path("path/{a}/{b}").resolveTemplatesFromEncoded(map).getUri()
                 .toString());
-        Assert.assertEquals("/path/a%2520%253F%2F*%2F/%2Fb%2F", target.path("path/{a}/{b}").resolveTemplates(map).getUri()
+        assertEquals("/path/a%2520%253F%2F*%2F/%2Fb%2F", target.path("path/{a}/{b}").resolveTemplates(map).getUri()
                 .toString());
-        Assert.assertEquals("/path/a%2520%253F/*///b/", target.path("path/{a}/{b}").resolveTemplates(map,
+        assertEquals("/path/a%2520%253F/*///b/", target.path("path/{a}/{b}").resolveTemplates(map,
                 false).getUri().toString());
 
         List<Map<String, Object>> corruptedTemplateValuesList = Lists.<Map<String, Object>>newArrayList(

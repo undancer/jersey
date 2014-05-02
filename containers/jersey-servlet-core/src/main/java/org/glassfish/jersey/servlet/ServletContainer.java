@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -64,6 +64,7 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.glassfish.jersey.internal.util.ExtendedLogger;
 import org.glassfish.jersey.internal.util.collection.Value;
+import org.glassfish.jersey.server.ApplicationHandler;
 import org.glassfish.jersey.server.ContainerException;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.server.ServerProperties;
@@ -143,6 +144,7 @@ import org.glassfish.jersey.uri.UriComponent;
  * @author Paul Sandoz
  * @author Pavel Bucek (pavel.bucek at oracle.com)
  * @author Michal Gajdos (michal.gajdos at oracle.com)
+ * @author Libor Kramolis (libor.kramolis at oracle.com)
  */
 public class ServletContainer extends HttpServlet implements Filter, Container {
 
@@ -260,7 +262,7 @@ public class ServletContainer extends HttpServlet implements Filter, Container {
             // and somebody would want to hit the root resource without the trailing slash
             int i = servletPath.lastIndexOf('/');
             if (servletPath.substring(i + 1).indexOf('.') < 0) {
-                // TODO (+ handle request URL with invalid characters - see the creation of absoluteUriBuilder bellow)
+                // TODO (+ handle request URL with invalid characters - see the creation of absoluteUriBuilder below)
 //                if (webComponent.getResourceConfig().getFeature(ResourceConfig.FEATURE_REDIRECT)) {
 //                    URI l = UriBuilder.fromUri(request.getRequestURL().toString()).
 //                            path("/").
@@ -286,7 +288,12 @@ public class ServletContainer extends HttpServlet implements Filter, Container {
             absoluteUriBuilder = UriBuilder.fromUri(requestURL.toString());
         } catch (IllegalArgumentException iae) {
             final Response.Status badRequest = Response.Status.BAD_REQUEST;
-            response.sendError(badRequest.getStatusCode(), badRequest.getReasonPhrase());
+            if (webComponent.configSetStatusOverSendError) {
+                response.reset();
+                response.setStatus(badRequest.getStatusCode(), badRequest.getReasonPhrase());
+            } else {
+                response.sendError(badRequest.getStatusCode(), badRequest.getReasonPhrase());
+            }
             return;
         }
 
@@ -300,9 +307,7 @@ public class ServletContainer extends HttpServlet implements Filter, Container {
          * We need to work around this and not use getPathInfo
          * for the decodedPath.
          */
-        final String decodedBasePath = (pathInfo != null)
-                ? request.getContextPath() + servletPath + "/"
-                : request.getContextPath() + "/";
+        final String decodedBasePath = request.getContextPath() + servletPath + "/";
 
         final String encodedBasePath = UriComponent.encode(decodedBasePath,
                 UriComponent.Type.PATH);
@@ -328,7 +333,12 @@ public class ServletContainer extends HttpServlet implements Filter, Container {
                     build();
         } catch (UriBuilderException ex) {
             final Response.Status badRequest = Response.Status.BAD_REQUEST;
-            response.sendError(badRequest.getStatusCode(), badRequest.getReasonPhrase());
+            if (webComponent.configSetStatusOverSendError) {
+                response.reset();
+                response.setStatus(badRequest.getStatusCode(), badRequest.getReasonPhrase());
+            } else {
+                response.sendError(badRequest.getStatusCode(), badRequest.getReasonPhrase());
+            }
             return;
         }
 
@@ -565,11 +575,18 @@ public class ServletContainer extends HttpServlet implements Filter, Container {
     @Override
     public void reload(ResourceConfig configuration) {
         try {
+            containerListener.onShutdown(this);
             webComponent = new WebComponent(webComponent.webConfig, configuration);
-            containerListener.onReload(this);
             containerListener = ConfigHelper.getContainerLifecycleListener(webComponent.appHandler);
+            containerListener.onReload(this);
+            containerListener.onStartup(this);
         } catch (ServletException ex) {
             logger.log(Level.SEVERE, "Reload failed", ex);
         }
+    }
+
+    @Override
+    public ApplicationHandler getApplicationHandler() {
+        return webComponent.appHandler;
     }
 }

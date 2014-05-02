@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -60,10 +60,10 @@ import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
 
 import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 
-import com.google.common.collect.Sets;
-
-import junit.framework.Assert;
+import jersey.repackaged.com.google.common.collect.Sets;
 
 /**
  * @author Miroslav Fuksa (miroslav.fuksa at oracle.com)
@@ -164,10 +164,10 @@ public class NameBindingTest extends JerseyTest {
         Set<Class<?>> positiveFilters = Sets.newHashSet(filtersThatShouldBeCalled);
         for (Class<?> filter : FILTERS) {
             if (positiveFilters.contains(filter)) {
-                Assert.assertEquals("Filter '" + filter.getSimpleName() + "' should be called.",
+                assertEquals("Filter '" + filter.getSimpleName() + "' should be called.",
                         "called", response.getHeaders().getFirst(filter.getSimpleName()));
             } else {
-                Assert.assertNull("Filter '" + filter.getSimpleName() + "' should not be called.",
+                assertNull("Filter '" + filter.getSimpleName() + "' should not be called.",
                         response.getHeaders().get(filter.getSimpleName()));
             }
         }
@@ -176,7 +176,7 @@ public class NameBindingTest extends JerseyTest {
 
     private Response _getResponse(String path) {
         final Response response = target().path(path).request().get();
-        Assert.assertEquals(200, response.getStatus());
+        assertEquals(200, response.getStatus());
         return response;
     }
 

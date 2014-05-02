@@ -3,7 +3,7 @@
 
     DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
 
-    Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+    Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
 
     The contents of this file are subject to the terms of either the GNU
     General Public License Version 2 only ("GPL") or the Common Development
@@ -46,7 +46,7 @@
     <parent>
         <groupId>org.glassfish.jersey.tests.integration</groupId>
         <artifactId>project</artifactId>
-        <version>2.5-SNAPSHOT</version>
+        <version>2.9-SNAPSHOT</version>
     </parent>
 
     <artifactId>portability-jersey-2</artifactId>
@@ -86,7 +86,14 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
-            </plugin>
+                <configuration>
+                  <classpathDependencyExcludes> <!-- this is to ensure only one Jersey version is present in the classpath -->
+                    <classpathDependencyExclude>com.sun.jersey:jersey-core</classpathDependencyExclude>
+                    <classpathDependencyExclude>com.sun.jersey:jersey-server</classpathDependencyExclude>
+                    <classpathDependencyExclude>com.sun.jersey:jersey-servlet</classpathDependencyExclude>
+                  </classpathDependencyExcludes>
+                </configuration>
+             </plugin>
             <plugin>
               <groupId>org.mortbay.jetty</groupId>
               <artifactId>jetty-maven-plugin</artifactId>

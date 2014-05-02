@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2011-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -54,7 +54,6 @@ import javax.ws.rs.core.Response;
 
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
-import org.glassfish.jersey.test.inmemory.internal.InMemoryConnector;
 
 import org.junit.Test;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -64,7 +63,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
- * Test class for {@link org.glassfish.jersey.test.inmemory.internal.InMemoryConnector}.
+ * Test class for {@link InMemoryConnector}.
  *
  * @author Pavel Bucek (pavel.bucek at oracle.com)
  */
@@ -102,6 +101,12 @@ public class InMemoryContainerTest extends JerseyTest {
         public String post(String entity) {
             return entity + "-post";
         }
+
+        @GET
+        @Path("sub")
+        public String getSubResource() {
+            return "sub";
+        }
     }
 
     @Test
@@ -109,6 +114,12 @@ public class InMemoryContainerTest extends JerseyTest {
         final Response response = target("test").request().get();
 
         assertTrue(response.getStatus() == 200);
+    }
+
+    @Test
+    public void testGetSub() {
+        final String response = target("test").path("sub").request().get(String.class);
+        assertEquals("sub", response);
     }
 
     @Test

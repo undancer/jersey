@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -43,14 +43,14 @@ package org.glassfish.jersey.server.internal.monitoring;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import javax.inject.Inject;
-import javax.inject.Provider;
-import javax.inject.Singleton;
 import javax.ws.rs.core.Feature;
 import javax.ws.rs.core.FeatureContext;
 
+import javax.inject.Inject;
+import javax.inject.Provider;
+import javax.inject.Singleton;
+
 import org.glassfish.jersey.internal.inject.ReferencingFactory;
-import org.glassfish.jersey.internal.util.PropertiesHelper;
 import org.glassfish.jersey.internal.util.collection.Ref;
 import org.glassfish.jersey.server.ServerProperties;
 import org.glassfish.jersey.server.internal.LocalizationMessages;
@@ -91,9 +91,9 @@ public class MonitoringFeature implements Feature {
 
     @Override
     public boolean configure(FeatureContext context) {
-        final Boolean monitoringEnabledProperty = PropertiesHelper.getValue(context.getConfiguration().getProperties(),
+        final Boolean monitoringEnabledProperty = ServerProperties.getValue(context.getConfiguration().getProperties(),
                 ServerProperties.MONITORING_STATISTICS_ENABLED, null, Boolean.class);
-        final Boolean mbeansEnabledProperty = PropertiesHelper.getValue(context.getConfiguration().getProperties(),
+        final Boolean mbeansEnabledProperty = ServerProperties.getValue(context.getConfiguration().getProperties(),
                 ServerProperties.MONITORING_STATISTICS_MBEANS_ENABLED, null, Boolean.class);
 
         if (monitoringEnabledProperty != null) {
@@ -131,7 +131,9 @@ public class MonitoringFeature implements Feature {
         }
 
         if (mBeansEnabled) {
-            context.register(MBeanExposer.class);
+            // instance registration is needed here as MBeanExposer needs to be a singleton so that
+            // one instance handles listening to events of MonitoringStatisticsListener and ContainerLifecycleListener
+            context.register(new MBeanExposer());
         }
 
         return monitoringEnabled;

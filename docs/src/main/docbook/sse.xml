@@ -3,7 +3,7 @@
 
     DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
 
-    Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+    Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
 
     The contents of this file are subject to the terms of either the GNU
     General Public License Version 2 only ("GPL") or the Common Development
@@ -173,21 +173,34 @@
         <para>
             Before you start working with Jersey SSE, in order to add support for SSE you need to include the dependency to the
             <emphasis>SSE media type module</emphasis>:
-            <programlisting xml:id="sse.dependency" language="xml" linenumbering="numbered"><![CDATA[<dependency>
+            <example xml:id="sse.dependency">
+                <title>Add <literal>jersey-media-sse</literal> dependency.</title>
+                <programlisting language="xml" linenumbering="numbered"><![CDATA[<dependency>
     <groupId>org.glassfish.jersey.media</groupId>
     <artifactId>jersey-media-sse</artifactId>
 </dependency>]]></programlisting>
-            Then you need register &jersey.sse.SseFeature;. The &lit.jersey.sse.SseFeature; is a feature that can be registered
-            for both, the client and the server.
+            </example>
+            <note>
+                <para>
+                    Prior to Jersey 2.8, you had to manually register &jersey.sse.SseFeature; in your application.
+                    (The &lit.jersey.sse.SseFeature; is a feature that can be registered for both, the client and the server.)
+                    Since Jersey 2.8, the feature gets automatically discovered and registered when Jersey SSE module is
+                    put on the application's classpath. The automatic discovery and registration of SSE feature can be suppressed
+                    by setting &jersey.sse.SseFeature.DISABLE_SSE; property to <literal>true</literal>.
+                    The behavior can also be selectively suppressed in either client or server runtime by setting
+                    &jersey.sse.SseFeature.DISABLE_SSE_CLIENT; or &jersey.sse.SseFeature.DISABLE_SSE_SERVER; property
+                    respectively.
+                </para>
+            </note>
         </para>
         <para>
             &lit.jersey.sse.SseFeature; adds new supported entity (representation) Java types, namely &jersey.sse.OutboundEvent;
             for the outbound server events and &jersey.sse.InboundEvent; for inbound client events. These types are serialized by
-            &jersey.sse.OutboundEventWriter; and de-serialized by &jersey.sse.InboundEventReader;.
+            &lit.jersey.sse.OutboundEventWriter; and de-serialized by &lit.jersey.sse.InboundEventReader;.
             There is no restriction for a media type used in individual event messages; however the media type used for a SSE
             stream as whole is <emphasis>"text/event-stream"</emphasis> and this media type should be set on messages that
             are used to serve SSE events (for example on the server side using &jaxrs.Produces; on the method that returns an
-            &lit.jersey.sse.EventOutput; - see bellow).
+            &lit.jersey.sse.EventOutput; - see below).
             The &lit.jersey.sse.InboundEvent; and &lit.jersey.sse.OutboundEvent; contain all the fields needed for composing
             and processing individual SSE events. These entities represent the <emphasis>chunks</emphasis> sent or received over
             an open server-to-client connection that is represented by an &jersey.server.ChunkedOutput; on the servers side and
@@ -361,6 +374,28 @@ data: Hello world 9!</screen>
 
                 Each message is received with a delay of one second.
             </para>
+
+            <note>
+                <para>
+                    If you have worked with streams in JAX-RS, you may wonder what is the difference between
+                    &jersey.server.ChunkedOutput; and &jaxrs.core.StreamingOutput;.
+                </para>
+                <para>
+                    &lit.jersey.server.ChunkedOutput; is Jersey-specific API. It lets you send "chunks" of data without closing
+                    the client connection using series of convenient calls to <literal>ChunkedOutput.write</literal> methods
+                    that take POJO + chunk media type as an input and then use the configured JAX-RS
+                    &lit.jaxrs.ext.MessageBodyWriter; providers to figure out the proper way of serializing each chunk POJO
+                    to bytes. Additionally, &lit.jersey.server.ChunkedOutput; writes can be invoked multiple times on the same
+                    outbound response connection, i.e. individual chunks are written in each write, not the full response entity.
+                </para>
+                <para>
+                    &lit.jaxrs.core.StreamingOutput; is, on the other hand, a low level JAX-RS API that works with bytes
+                    directly. You have to implement &lit.jaxrs.core.StreamingOutput; interface yourself. Also, its
+                    <literal>write(OutputStream)</literal> method will be invoked by JAX-RS runtime only once per response
+                    and the call to this method is blocking, i.e. the method is expected to write the entire entity body
+                    before returning.
+                </para>
+            </note>
         </section>
 
         <section>
@@ -394,7 +429,7 @@ public static class BroadcasterResource {
 
         broadcaster.broadcast(event);
 
-        return "Message was '" + message + "' broadcast.";
+        return "Message '" + message + "' has been broadcast.";
     }
 
     @GET
@@ -659,7 +694,7 @@ eventSource.close();</programlisting>
                     that include a <literal>Retry-After</literal> HTTP header with a valid value. The
                     <literal>HTTP 503 + Retry-After</literal> technique is often used by HTTP endpoints as a means of
                     connection and traffic throttling. In case a <literal>HTTP 503 + Retry-After</literal> response is received
-                    in return to a connection request from SSE endpoint, Jersey {@code EventSource} will automatically
+                    in return to a connection request from SSE endpoint, Jersey <literal>EventSource</literal> will automatically
                     schedule a reconnect attempt  and use the received <literal>Retry-After</literal> HTTP header value as a
                     one-time override of the reconnect delay.
                 </para>

@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -51,7 +51,7 @@ import javax.validation.TraversableResolver;
 
 import org.glassfish.jersey.internal.util.ReflectionHelper;
 
-import com.google.common.collect.Maps;
+import jersey.repackaged.com.google.common.collect.Maps;
 
 /**
  * {@link TraversableResolver Traversable resolver} used for handling {@link javax.validation.executable.ValidateOnExecution}
@@ -90,10 +90,11 @@ class ValidateOnExecutionTraversableResolver implements TraversableResolver {
                                final Class<?> rootBeanType,
                                final Path pathToTraversableObject,
                                final ElementType elementType) {
-        // Make sure a getter method is validated on a resource class.
+        // Make sure only getters on entities are validated (not getters on resource classes).
         final Class<?> traversableObjectClass = traversableObject.getClass();
+        final boolean isEntity = !rootBeanType.equals(traversableObjectClass);
 
-        if (validateExecutable && ElementType.METHOD.equals(elementType)) {
+        if (isEntity && validateExecutable && ElementType.METHOD.equals(elementType)) {
             final String propertyName = traversableProperty.getName();
             final String propertyKey = traversableObjectClass.getName() + "#" + propertyName;
 
@@ -101,11 +102,8 @@ class ValidateOnExecutionTraversableResolver implements TraversableResolver {
                 propertyToMethod.putIfAbsent(propertyKey, getGetterMethod(traversableObjectClass, propertyName));
             }
 
-            // Ignore check if traversing through entity (getters should be validated).
-            final boolean isEntity = !rootBeanType.equals(traversableObjectClass);
-
             final Method getter = propertyToMethod.get(propertyKey);
-            return getter != null && validateOnExecutionHandler.validateGetter(traversableObjectClass, getter, isEntity);
+            return getter != null && validateOnExecutionHandler.validateGetter(traversableObjectClass, getter);
         }
 
         return delegate.isReachable(traversableObject, traversableProperty, rootBeanType, pathToTraversableObject, elementType);

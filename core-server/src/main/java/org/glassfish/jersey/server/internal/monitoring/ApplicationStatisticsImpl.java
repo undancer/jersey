@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -37,7 +37,6 @@
  * only if the new code is made subject to such option by the copyright
  * holder.
  */
-
 package org.glassfish.jersey.server.internal.monitoring;
 
 import java.util.Date;
@@ -54,7 +53,6 @@ import org.glassfish.jersey.server.monitoring.ApplicationStatistics;
 class ApplicationStatisticsImpl implements ApplicationStatistics {
     private final ResourceConfig resourceConfig;
     private final Date startTime;
-    private final Date destroyTime;
     private final Set<Class<?>> registeredClasses;
     private final Set<Object> registeredInstances;
     private final Set<Class<?>> providers;
@@ -63,45 +61,44 @@ class ApplicationStatisticsImpl implements ApplicationStatistics {
      * Create a new application statistics instance.
      * @param resourceConfig Resource config of the application being monitored.
      * @param startTime Start time of the application (when initialization was finished).
-     * @param destroyTime Destroy time of the application (when application has been stopped).
      * @param registeredClasses Registered resource classes.
      * @param registeredInstances Registered resource instances.
      * @param providers Registered providers.
      */
-    ApplicationStatisticsImpl(ResourceConfig resourceConfig, Date startTime, Date destroyTime,
+    ApplicationStatisticsImpl(ResourceConfig resourceConfig, Date startTime,
                               Set<Class<?>> registeredClasses,
                               Set<Object> registeredInstances, Set<Class<?>> providers) {
         this.resourceConfig = resourceConfig;
         this.startTime = startTime;
-        this.destroyTime = destroyTime;
 
         this.registeredClasses = registeredClasses;
         this.registeredInstances = registeredInstances;
         this.providers = providers;
     }
 
+    @Override
     public ResourceConfig getResourceConfig() {
         return resourceConfig;
     }
 
+    @Override
     public Date getStartTime() {
         return startTime;
     }
 
+    @Override
     public Set<Class<?>> getRegisteredClasses() {
         return registeredClasses;
     }
 
+    @Override
     public Set<Object> getRegisteredInstances() {
         return registeredInstances;
     }
 
+    @Override
     public Set<Class<?>> getProviders() {
         return providers;
-    }
-
-    public Date getDestroyTime() {
-        return destroyTime;
     }
 
     @Override

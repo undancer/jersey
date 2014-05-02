@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -58,7 +58,7 @@ import static org.junit.Assert.assertTrue;
 /**
  * Taken from Jersey 1: jersey-tests: com.sun.jersey.impl.uri.UriTemplateTest
  *
- * @author Paul.Sandoz at Sun.Com
+ * @author Paul Sandoz
  */
 public class UriTemplateTest {
 
@@ -116,7 +116,7 @@ public class UriTemplateTest {
         assertThat(UriTemplate.resolve(baseUri, URI.create("g?y/../x")), equalTo(URI.create("http://a/b/c/g?y/../x")));
         assertThat(UriTemplate.resolve(baseUri, URI.create("g#s/./x")), equalTo(URI.create("http://a/b/c/g#s/./x")));
         assertThat(UriTemplate.resolve(baseUri, URI.create("g#s/../x")), equalTo(URI.create("http://a/b/c/g#s/../x")));
-        // Per RFC 3986, test bellow should resolve to "http:g" for strict parsers and "http://a/b/c/g" for backward compatibility
+        // Per RFC 3986, test below should resolve to "http:g" for strict parsers and "http://a/b/c/g" for backward compatibility
         assertThat(UriTemplate.resolve(baseUri, URI.create("http:g")), equalTo(URI.create("http:g")));
 
         // JDK bug http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=4708535
@@ -398,6 +398,39 @@ public class UriTemplateTest {
                 "fred", "barney", "joe");
     }
 
+    @Test
+    public void testGroupIndexes() throws Exception {
+        UriTemplate template = new UriTemplate("/a");
+        assertThat(template.getPattern().getGroupIndexes(), equalTo(new int[0]));
+
+        template = new UriTemplate("/{a}");
+        assertThat(template.getPattern().getGroupIndexes(), equalTo(new int[] {1, 2}));
+
+        template = new UriTemplate("/{a}/b");
+        assertThat(template.getPattern().getGroupIndexes(), equalTo(new int[] {1, 2}));
+
+        template = new UriTemplate("/{a}/{b}");
+        assertThat(template.getPattern().getGroupIndexes(), equalTo(new int[] {1, 2, 3}));
+
+        template = new UriTemplate("/{a}/{b}");
+        assertThat(template.getPattern().getGroupIndexes(), equalTo(new int[] {1, 2, 3}));
+
+        template = new UriTemplate("/{a}/b/{c}");
+        assertThat(template.getPattern().getGroupIndexes(), equalTo(new int[] {1, 2, 3}));
+
+        template = new UriTemplate("/{a: (abc)+}");
+        assertThat(template.getPattern().getGroupIndexes(), equalTo(new int[] {1, 3}));
+
+        template = new UriTemplate("/{a: (abc)+}/b");
+        assertThat(template.getPattern().getGroupIndexes(), equalTo(new int[] {1, 3}));
+
+        template = new UriTemplate("/{a: (abc)+}/{b}");
+        assertThat(template.getPattern().getGroupIndexes(), equalTo(new int[] {1, 3, 4}));
+
+        template = new UriTemplate("/{a: (abc)+}/b/{c}");
+        assertThat(template.getPattern().getGroupIndexes(), equalTo(new int[] {1, 3, 4}));
+    }
+
     void _testSubstitutionArray(String template, String uri, String... values) {
         UriTemplate t = new UriTemplate(template);
 
@@ -446,4 +479,21 @@ public class UriTemplateTest {
 
         assertEquals(uri, t.createURI(variableMap));
     }
+
+    @Test
+    public void testNormalizesURIs() throws Exception {
+        this.validateNormalize("/some-path", "/some-path");
+        this.validateNormalize("http://example.com/some/../path", "http://example.com/path");
+        // note, that following behaviour differs from Jersey-1.x UriHelper.normalize(), the '..' segment is simply left out in
+        // this case, where older UriHelper.normalize() would return the path including the '..' segment. It is also mentioned
+        // in the UriTemplate.normalize() javadoc.
+        this.validateNormalize("http://example.com/../path", "http://example.com/path");
+        this.validateNormalize("http://example.com//path", "http://example.com//path");
+    }
+
+    private void validateNormalize(String path, String expected) throws Exception {
+        URI result = UriTemplate.normalize(path);
+        assertEquals(expected, result.toString());
+    }
+
 }

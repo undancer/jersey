@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -39,82 +39,98 @@
  */
 package org.glassfish.jersey.server.mvc.freemarker;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.io.Reader;
+import java.nio.charset.Charset;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import javax.ws.rs.core.Context;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.UriInfo;
+import javax.ws.rs.core.MultivaluedMap;
 
+import javax.inject.Inject;
+import javax.servlet.ServletContext;
+
+import org.glassfish.jersey.internal.util.collection.Value;
 import org.glassfish.jersey.server.ContainerException;
 import org.glassfish.jersey.server.mvc.Viewable;
-import org.glassfish.jersey.server.mvc.internal.DefaultTemplateProcessor;
+import org.glassfish.jersey.server.mvc.spi.AbstractTemplateProcessor;
 
-import com.google.common.collect.Lists;
+import org.glassfish.hk2.api.ServiceLocator;
 
+import org.jvnet.hk2.annotations.Optional;
+
+import freemarker.cache.ClassTemplateLoader;
+import freemarker.cache.FileTemplateLoader;
+import freemarker.cache.MultiTemplateLoader;
+import freemarker.cache.TemplateLoader;
+import freemarker.cache.WebappTemplateLoader;
 import freemarker.template.Configuration;
-import freemarker.template.DefaultObjectWrapper;
 import freemarker.template.Template;
 import freemarker.template.TemplateException;
+import jersey.repackaged.com.google.common.collect.Lists;
 
 /**
- * Freemarker view template processor.
+ * {@link org.glassfish.jersey.server.mvc.spi.TemplateProcessor Template processor} providing support for Freemarker templates.
  *
  * @author Pavel Bucek (pavel.bucek at oracle.com)
  * @author Michal Gajdos (michal.gajdos at oracle.com)
  */
-final class FreemarkerViewProcessor extends DefaultTemplateProcessor<String> {
+final class FreemarkerViewProcessor extends AbstractTemplateProcessor<Template> {
 
-    private final Configuration configuration;
-
-    @Context
-    private UriInfo uriInfo;
+    private final Configuration factory;
 
     /**
-     * Injection constructor.
+     * Create an instance of this processor with injected {@link javax.ws.rs.core.Configuration config} and
+     * (optional) {@link javax.servlet.ServletContext servlet context}.
      *
-     * @param config JAX-RS/Jersey runtime configuration.
+     * @param config config to configure this processor from.
+     * @param serviceLocator service locator to initialize template object factory if needed.
+     * @param servletContext (optional) servlet context to obtain template resources from.
      */
-    public FreemarkerViewProcessor(@Context final javax.ws.rs.core.Configuration config) {
-        super(config);
+    @Inject
+    public FreemarkerViewProcessor(final javax.ws.rs.core.Configuration config, final ServiceLocator serviceLocator,
+                                   @Optional final ServletContext servletContext) {
+        super(config, servletContext, "freemarker", "ftl");
 
-        configuration = new Configuration();
-        configuration.setObjectWrapper(new DefaultObjectWrapper());
+        this.factory = getTemplateObjectFactory(serviceLocator, Configuration.class, new Value<Configuration>() {
+            @Override
+            public Configuration get() {
+                // Create different loaders.
+                final List<TemplateLoader> loaders = Lists.newArrayList();
+                if (servletContext != null) {
+                    loaders.add(new WebappTemplateLoader(servletContext));
+                }
+                loaders.add(new ClassTemplateLoader(FreemarkerViewProcessor.class, "/"));
+                try {
+                    loaders.add(new FileTemplateLoader(new File("/")));
+                } catch (IOException e) {
+                    // NOOP
+                }
 
-        setBasePathFromProperty(FreemarkerProperties.TEMPLATES_BASE_PATH);
-    }
-
-    @Override
-    public String resolve(final String name, final MediaType mediaType) {
-        final Class<?> lastMatchedResourceClass = getLastMatchedResourceClass();
-
-        for (final String templateName : getPossibleTemplateNames(name)) {
-            if (lastMatchedResourceClass.getResource(templateName) != null) {
-                return templateName;
+                // Create Factory.
+                final Configuration configuration = new Configuration();
+                configuration.setTemplateLoader(new MultiTemplateLoader(loaders.toArray(new TemplateLoader[loaders.size()])));
+                return configuration;
             }
-        }
+        });
 
-        return null;
     }
 
     @Override
-    protected List<String> getExtensions() {
-        return Lists.newArrayList(".ftl");
+    protected Template resolve(final String templateReference, final Reader reader) throws Exception {
+        return factory.getTemplate(templateReference);
     }
 
     @Override
-    public void writeTo(final String templateReference, final Viewable viewable, final MediaType mediaType,
-                        final OutputStream out) throws IOException {
-        // Commit the status and headers to the HttpServletResponse
-        out.flush();
-
-        configuration.setClassForTemplateLoading(getLastMatchedResourceClass(), "/");
-        final Template template = configuration.getTemplate(templateReference);
-
+    public void writeTo(final Template template, final Viewable viewable, final MediaType mediaType,
+                        final MultivaluedMap<String, Object> httpHeaders, final OutputStream out) throws IOException {
         try {
             Object model = viewable.getModel();
             if (!(model instanceof Map)) {
@@ -122,13 +138,11 @@ final class FreemarkerViewProcessor extends DefaultTemplateProcessor<String> {
                     put("model", viewable.getModel());
                 }};
             }
-            template.process(model, new OutputStreamWriter(out));
+            Charset encoding = setContentType(mediaType, httpHeaders);
+
+            template.process(model, new OutputStreamWriter(out, encoding));
         } catch (TemplateException te) {
             throw new ContainerException(te);
         }
-    }
-
-    private Class<?> getLastMatchedResourceClass() {
-        return uriInfo.getMatchedResources().get(0).getClass();
     }
 }

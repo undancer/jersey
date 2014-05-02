@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -37,7 +37,6 @@
  * only if the new code is made subject to such option by the copyright
  * holder.
  */
-
 package org.glassfish.jersey.tests.e2e.server;
 
 import javax.ws.rs.GET;
@@ -46,9 +45,9 @@ import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.Response;
 
-import org.glassfish.jersey.apache.connector.ApacheConnector;
+import org.glassfish.jersey.apache.connector.ApacheConnectorProvider;
 import org.glassfish.jersey.client.ClientConfig;
-import org.glassfish.jersey.grizzly.connector.GrizzlyConnector;
+import org.glassfish.jersey.grizzly.connector.GrizzlyConnectorProvider;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
 import org.glassfish.jersey.test.grizzly.GrizzlyTestContainerFactory;
@@ -74,15 +73,9 @@ import org.junit.runners.Suite;
         ResponseStatusTypeTest.GrizzlyContainerGrizzlyConnectorTest.class,
         ResponseStatusTypeTest.GrizzlyContainerApacheConnectorTest.class,
         ResponseStatusTypeTest.SimpleContainerHttpUrlConnectorTest.class})
-public class ResponseStatusTypeTest extends JerseyTest {
+public class ResponseStatusTypeTest {
 
     public static final String REASON_PHRASE = "my-phrase";
-
-    @Override
-    protected Application configure() {
-        return new ResourceConfig(TestResource.class);
-    }
-
 
     public static class InMemoryTest extends JerseyTest {
         @Override
@@ -117,7 +110,6 @@ public class ResponseStatusTypeTest extends JerseyTest {
 
     }
 
-
     public static class GrizzlyContainerGrizzlyConnectorTest extends JerseyTest {
         @Override
         protected Application configure() {
@@ -132,7 +124,7 @@ public class ResponseStatusTypeTest extends JerseyTest {
 
         @Override
         protected void configureClient(ClientConfig config) {
-            config.connector(new GrizzlyConnector(config));
+            config.connectorProvider(new GrizzlyConnectorProvider());
         }
 
 
@@ -161,7 +153,7 @@ public class ResponseStatusTypeTest extends JerseyTest {
 
         @Override
         protected void configureClient(ClientConfig config) {
-            config.connector(new ApacheConnector(config));
+            config.connectorProvider(new ApacheConnectorProvider());
         }
 
 
@@ -208,7 +200,6 @@ public class ResponseStatusTypeTest extends JerseyTest {
             _testCustomBadRequest(target());
         }
     }
-
 
     public static class JdkHttpContainerHttpUrlConnectorTest extends JerseyTest {
         @Override
@@ -262,28 +253,38 @@ public class ResponseStatusTypeTest extends JerseyTest {
 
     }
 
-
     public static class Custom428Type implements Response.StatusType {
         @Override
-        public int getStatusCode() { return 428; }
+        public int getStatusCode() {
+            return 428;
+        }
 
         @Override
-        public String getReasonPhrase() { return REASON_PHRASE; }
+        public String getReasonPhrase() {
+            return REASON_PHRASE;
+        }
 
         @Override
-        public Response.Status.Family getFamily() { return Response.Status.Family.CLIENT_ERROR; }
+        public Response.Status.Family getFamily() {
+            return Response.Status.Family.CLIENT_ERROR;
+        }
     }
-
 
     public static class CustomBadRequestWithoutReasonType implements Response.StatusType {
         @Override
-        public int getStatusCode() { return 400; }
+        public int getStatusCode() {
+            return 400;
+        }
 
         @Override
-        public String getReasonPhrase() { return null; }
+        public String getReasonPhrase() {
+            return null;
+        }
 
         @Override
-        public Response.Status.Family getFamily() { return Response.Status.Family.CLIENT_ERROR; }
+        public Response.Status.Family getFamily() {
+            return Response.Status.Family.CLIENT_ERROR;
+        }
     }
 
     public static void _testCustom(WebTarget target) {

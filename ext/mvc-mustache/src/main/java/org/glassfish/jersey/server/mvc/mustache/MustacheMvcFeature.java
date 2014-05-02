@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -47,7 +47,6 @@ import javax.ws.rs.core.Feature;
 import javax.ws.rs.core.FeatureContext;
 
 import org.glassfish.jersey.server.mvc.MvcFeature;
-import org.glassfish.jersey.server.mvc.MvcProperties;
 
 /**
  * {@link Feature} used to add support for {@link MvcFeature MVC} and Mustache templates.
@@ -59,6 +58,8 @@ import org.glassfish.jersey.server.mvc.MvcProperties;
  */
 @ConstrainedTo(RuntimeType.SERVER)
 public class MustacheMvcFeature implements Feature {
+
+    private final static String SUFFIX = ".mustache";
 
     /**
      * {@link String} property defining the base path to Mustache templates. If set, the value of the property is added in front
@@ -76,7 +77,7 @@ public class MustacheMvcFeature implements Feature {
      * <p/>
      * The name of the configuration property is <tt>{@value}</tt>.
      */
-    public static final String TEMPLATE_BASE_PATH = MvcProperties.TEMPLATE_BASE_PATH + ".mustache";
+    public static final String TEMPLATE_BASE_PATH = MvcFeature.TEMPLATE_BASE_PATH + SUFFIX;
 
     /**
      * If {@code true} then enable caching of Mustache templates to avoid multiple compilation.
@@ -84,8 +85,37 @@ public class MustacheMvcFeature implements Feature {
      * The default value is {@code false}.
      * <p/>
      * The name of the configuration property is <tt>{@value}</tt>.
+     *
+     * @since 2.5
      */
-    public static final String CACHING_TEMPLATES_ENABLED = "jersey.config.server.mvc.caching.mustache.enabled";
+    public static final String CACHE_TEMPLATES = MvcFeature.CACHE_TEMPLATES + SUFFIX;
+
+    /**
+     * Property used to pass user-configured {@link com.github.mustachejava.MustacheFactory factory} able to create
+     * {@link com.github.mustachejava.Mustache Mustache templates}.
+     * <p/>
+     * The default value is not set.
+     * <p/>
+     * The name of the configuration property is <tt>{@value}</tt>.
+     *
+     * @since 2.5
+     */
+    public static final String TEMPLATE_OBJECT_FACTORY = MvcFeature.TEMPLATE_OBJECT_FACTORY + SUFFIX;
+
+    /**
+     * Property defines output encoding produced by {@link org.glassfish.jersey.server.mvc.spi.TemplateProcessor}.
+     * The value must be a valid encoding defined that can be passed
+     * to the {@link java.nio.charset.Charset#forName(String)} method.
+     *
+     * <p/>
+     * The default value is {@code UTF-8}.
+     * <p/>
+     * The name of the configuration property is <tt>{@value}</tt>.
+     * <p/>
+     *
+     * @since 2.7
+     */
+    public static final String ENCODING = MvcFeature.ENCODING + SUFFIX;
 
     @Override
     public boolean configure(final FeatureContext context) {

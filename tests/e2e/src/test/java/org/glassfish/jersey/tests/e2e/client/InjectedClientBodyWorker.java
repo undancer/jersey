@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -51,7 +51,6 @@ import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.client.Entity;
-import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.Configuration;
 import javax.ws.rs.core.Context;
@@ -67,11 +66,10 @@ import org.glassfish.jersey.client.ClientConfig;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
 
+import org.junit.Test;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
-
-import org.junit.Test;
 
 /**
  * Test if JAX-RS injection points work in client side providers.
@@ -221,11 +219,6 @@ public class InjectedClientBodyWorker extends JerseyTest {
                 .register(ConfigurationInjectedReader.class);
     }
 
-    @Override
-    public WebTarget target() {
-        return super.target().path("echo");
-    }
-
     @Test
     public void testProvidersInReader() throws Exception {
         _testProviders(ProviderType, MediaType.TEXT_PLAIN);
@@ -248,12 +241,12 @@ public class InjectedClientBodyWorker extends JerseyTest {
 
     private void _testProviders(final String incomingType, final String outgoingType) throws Exception {
 
-        final String postWithoutProviderResult = target()
+        final String postWithoutProviderResult = target("echo")
                 .request(outgoingType)
                 .post(Entity.entity("does not matter", incomingType), String.class);
         assertThat(postWithoutProviderResult, is("null"));
 
-        final String postWithProviderResult = target()
+        final String postWithProviderResult = target("echo")
                 .register(MyContextResolver.class)
                 .request(outgoingType)
                 .post(Entity.entity("ignored", incomingType), String.class);
@@ -262,12 +255,12 @@ public class InjectedClientBodyWorker extends JerseyTest {
 
     private void testConfiguration(final String incomingType, final String outgoingType) throws Exception {
 
-        final String postWithoutProviderResult = target()
+        final String postWithoutProviderResult = target("echo")
                 .request(incomingType)
                 .post(Entity.entity("whatever", outgoingType), String.class);
         assertThat(postWithoutProviderResult, is("false"));
 
-        final String postWithProviderResult = target()
+        final String postWithProviderResult = target("echo")
                 .register(MyContextResolver.class)
                 .request(incomingType)
                 .post(Entity.entity("bummer", outgoingType), String.class);

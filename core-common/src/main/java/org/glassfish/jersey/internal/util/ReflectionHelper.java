@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -58,6 +58,7 @@ import java.net.URL;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.security.PrivilegedExceptionAction;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -74,14 +75,13 @@ import javax.ws.rs.core.GenericType;
 import org.glassfish.jersey.internal.LocalizationMessages;
 import org.glassfish.jersey.internal.OsgiRegistry;
 import org.glassfish.jersey.internal.util.collection.ClassTypePair;
-
 import org.osgi.framework.Bundle;
 import org.osgi.framework.FrameworkUtil;
 
-import com.google.common.base.Function;
-import com.google.common.collect.Collections2;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
+import jersey.repackaged.com.google.common.base.Function;
+import jersey.repackaged.com.google.common.collect.Collections2;
+import jersey.repackaged.com.google.common.collect.Lists;
+import jersey.repackaged.com.google.common.collect.Sets;
 
 /**
  * Utility methods for Java reflection.
@@ -253,8 +253,8 @@ public class ReflectionHelper {
                     try {
                         return (Class<T>) Class.forName(name, false, cl);
                     } catch (ClassNotFoundException ex) {
-                        if (LOGGER.isLoggable(Level.FINE)) {
-                            LOGGER.log(Level.FINE,
+                        if (LOGGER.isLoggable(Level.FINER)) {
+                            LOGGER.log(Level.FINER,
                                     "Unable to load class " + name + " using the supplied class loader "
                                             + cl.getClass().getName() + ".", ex);
                         }
@@ -263,8 +263,8 @@ public class ReflectionHelper {
                 try {
                     return (Class<T>) Class.forName(name);
                 } catch (ClassNotFoundException ex) {
-                    if (LOGGER.isLoggable(Level.FINE)) {
-                        LOGGER.log(Level.FINE, "Unable to load class " + name + " using the current class loader.", ex);
+                    if (LOGGER.isLoggable(Level.FINER)) {
+                        LOGGER.log(Level.FINER, "Unable to load class " + name + " using the current class loader.", ex);
                     }
                 }
 
@@ -308,6 +308,34 @@ public class ReflectionHelper {
             public Field[] run() {
                 return clazz.getDeclaredFields();
             }
+        };
+    }
+    
+    /**
+     * Get privileged action to obtain fields on given class, recursively through inheritance hierarchy.
+     * If run using security manager, the returned privileged action
+     * must be invoked within a doPrivileged block.
+     *
+     * @param clazz class for which to get fields.
+     * @return privileged action to obtain fields declared on the {@code clazz} class.
+     *
+     * @see AccessController#doPrivileged(java.security.PrivilegedAction)
+     */
+    public static PrivilegedAction<Field[]> getAllFieldsPA(final Class<?> clazz) {
+        return new PrivilegedAction<Field[]>() {
+            @Override
+            public Field[] run() {
+            	final List<Field> fields = new ArrayList<Field>();
+            	recurse(clazz, fields);
+                return fields.toArray(new Field[0]);
+            }
+            
+           private void recurse(final Class<?> clazz, final List<Field> fields) {
+        	   fields.addAll(Arrays.asList(clazz.getDeclaredFields()));
+        	   if(clazz.getSuperclass() != null) {
+        		   recurse(clazz.getSuperclass(), fields);
+        	   }
+           }
         };
     }
 

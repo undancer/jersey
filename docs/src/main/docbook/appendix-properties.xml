@@ -3,7 +3,7 @@
 
     DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
 
-    Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+    Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
 
     The contents of this file are subject to the terms of either the GNU
     General Public License Version 2 only ("GPL") or the Common Development
@@ -42,13 +42,13 @@
 -->
 <!DOCTYPE appendix [<!ENTITY % ents SYSTEM "jersey.ent" > %ents; ]>
 <appendix xmlns="http://docbook.org/ns/docbook"
-        version="5.0"
-        xml:lang="en"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xmlns:xlink="http://www.w3.org/1999/xlink"
-        xsi:schemaLocation="http://docbook.org/ns/docbook http://docbook.org/xml/5.0/xsd/docbook.xsd
+          version="5.0"
+          xml:lang="en"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns:xlink="http://www.w3.org/1999/xlink"
+          xsi:schemaLocation="http://docbook.org/ns/docbook http://docbook.org/xml/5.0/xsd/docbook.xsd
                              http://www.w3.org/1999/xlink http://www.w3.org/1999/xlink.xsd"
-        xml:id="appendix-properties">
+          xml:id="appendix-properties">
 
     <title>Configuration Properties</title>
 
@@ -186,7 +186,7 @@
                     </row>
                     <row>
                         <entry>&jersey.server.ServerProperties.FEATURE_AUTO_DISCOVERY_DISABLE;</entry>
-                        <entry><literal>jersey.config.disableAutoDiscovery.server</literal></entry>
+                        <entry><literal>jersey.config.server.disableAutoDiscovery</literal></entry>
                         <entry>
                             <para>
                                 Disables feature auto discovery on server. Default value is <literal>false</literal>.
@@ -206,7 +206,7 @@
                     </row>
                     <row>
                         <entry>&jersey.server.ServerProperties.JSON_PROCESSING_FEATURE_DISABLE;</entry>
-                        <entry><literal>jersey.config.disableJsonProcessing.server</literal></entry>
+                        <entry><literal>jersey.config.server.disableJsonProcessing</literal></entry>
                         <entry>
                             <para>
                                 Disables configuration of Json Processing (JSR-353) feature. Default value is <literal>false</literal>.
@@ -233,8 +233,7 @@
                     </row>
                     <row>
                         <entry>&jersey.server.ServerProperties.METAINF_SERVICES_LOOKUP_DISABLE;</entry>
-                        <entry><literal>jersey.config
-                            .disableMetainfServicesLookup.server</literal></entry>
+                        <entry><literal>jersey.config.server.disableMetainfServicesLookup</literal></entry>
                         <entry>
                             <para>
                                 Disables META-INF/services lookup on server. Default value is <literal>false</literal>.
@@ -243,7 +242,7 @@
                     </row>
                     <row>
                         <entry>&jersey.server.ServerProperties.MOXY_JSON_FEATURE_DISABLE;</entry>
-                        <entry><literal>jersey.config.disableMoxyJson.server</literal></entry>
+                        <entry><literal>jersey.config.server.disableMoxyJson</literal></entry>
                         <entry>
                             <para>
                                 Disables configuration of MOXy Json feature. Default value is <literal>false</literal>.
@@ -283,7 +282,7 @@
                     <row>
                         <entry>&jersey.server.ServerProperties.OUTBOUND_CONTENT_LENGTH_BUFFER;
                             (Jersey 2.2 or later)</entry>
-                        <entry><literal>jersey.config.contentLength.buffer.server</literal></entry>
+                        <entry><literal>jersey.config.contentLength.server.buffer</literal></entry>
                         <entry>
                             <para>
                                 An integer value that defines the buffer size used to buffer the outbound message entity in order to
@@ -374,6 +373,63 @@
                             </para>
                         </entry>
                     </row>
+                    <row>
+                        <entry>&jersey.server.ServerProperties.RESPONSE_SET_STATUS_OVER_SEND_ERROR;</entry>
+                        <entry><literal>jersey.config.server.response.setStatusOverSendError</literal></entry>
+                        <entry>
+                            <para>
+                                Whenever response status is <literal>4xx</literal> or <literal>5xx</literal> it is
+                                possible to choose between <literal>sendError</literal> or <literal>setStatus</literal>
+                                on container specific <literal>Response</literal> implementation. E.g. on servlet
+                                container Jersey can call <literal>HttpServletResponse.setStatus(...)</literal> or
+                                <literal>HttpServletResponse.sendError(...)</literal>.
+
+                                Calling <literal>sendError(...)</literal> method usually resets entity, response headers
+                                and provide error page for specified status code (e.g. servlet
+                                <literal>error-page</literal> configuration).
+                                However if you want to post-process response (e.g. by servlet filter) the only
+                                way to do it is calling <literal>setStatus(...)</literal> on container Response object.
+
+                                If property value is &lit.true; the method <literal>Response.setStatus(...)</literal> is
+                                used over default <literal>Response.sendError(...)</literal>.
+
+                                Type of the property value is <literal>boolean</literal>.
+                                The default value is &lit.false;.
+                            </para>
+                        </entry>
+                    </row>
+                    <row>
+                        <entry>&jersey.server.ServerProperties.TRACING;</entry>
+                        <entry><literal>jersey.config.server.tracing.type</literal></entry>
+                        <entry>
+                            <para>
+                                Enables/disables tracing support. Possible values are <literal>OFF</literal> (default),
+                                <literal>ON_DEMAND</literal> and <literal>ALL</literal>.
+                                See <xref linkend="tracing.configuration" /> for more detail.
+                            </para>
+                        </entry>
+                    </row>
+                    <row>
+                        <entry>&jersey.server.ServerProperties.TRACING_THRESHOLD;</entry>
+                        <entry><literal>jersey.config.server.tracing.threshold</literal></entry>
+                        <entry>
+                            <para>
+                                Sets the amount of detail provided by tracing. Possible values are <literal>SUMMARY</literal>,
+                                <literal>TRACE</literal> and <literal>VERBOSE</literal>.
+                                See <xref linkend="tracing.configuration" /> to learn more about the levels.
+                            </para>
+                        </entry>
+                    </row>
+                    <row>
+                        <entry>&jersey.server.ServerProperties.PROCESSING_RESPONSE_ERRORS_ENABLED;</entry>
+                        <entry><literal>jersey.config.server.exception.processResponseErrors</literal></entry>
+                        <entry>
+                            <para>
+                                If property value is <literal>true</literal> then the errors raised during response processing are
+                                tried to be handled using available response error mappers.
+                            </para>
+                        </entry>
+                    </row>
                 </tbody>
             </tgroup>
         </table>
@@ -402,16 +458,8 @@
                         <entry><literal>jersey.config.client.async.threadPoolSize</literal></entry>
                         <entry>
                             <para>
-                                Asynchronous thread pool size. Default value is not set. <emphasis>NOT SUPPORTED</emphasis>.
-                            </para>
-                        </entry>
-                    </row>
-                    <row>
-                        <entry>&jersey.client.ClientProperties.BUFFER_RESPONSE_ENTITY_ON_EXCEPTION;</entry>
-                        <entry><literal>jersey.config.client.bufferResponseEntityOnException</literal></entry>
-                        <entry>
-                            <para>
-                                Automatic response buffering in case of an exception. Default value is <literal>true</literal>. <emphasis>NOT SUPPORTED</emphasis>.
+                                Asynchronous thread pool size. Default value is not set.
+                                <emphasis>Supported with &jersey.grizzly.GrizzlyConnectorProvider; only.</emphasis>.
                             </para>
                         </entry>
                     </row>
@@ -420,7 +468,7 @@
                         <entry><literal>jersey.config.client.chunkedEncodingSize</literal></entry>
                         <entry>
                             <para>
-                                Chunked encoding size. Default value is not set. <emphasis>NOT SUPPORTED</emphasis>.
+                                Chunked encoding size. Default value is not set.
                             </para>
                         </entry>
                     </row>
@@ -435,7 +483,7 @@
                     </row>
                     <row>
                         <entry>&jersey.client.ClientProperties.FEATURE_AUTO_DISCOVERY_DISABLE;</entry>
-                        <entry><literal>jersey.config.disableAutoDiscovery.client</literal></entry>
+                        <entry><literal>jersey.config.client.disableAutoDiscovery</literal></entry>
                         <entry>
                             <para>
                                 Disables feature auto discovery on client. Default value is <literal>false</literal>.
@@ -452,20 +500,8 @@
                         </entry>
                     </row>
                     <row>
-                        <entry><link xlink:href='&jersey.javadoc.path;/client/ClientProperties.html#HTTP_URL_CONNECTION_SET_METHOD_WORKAROUND'>ClientProperties
-                            .HTTP_URL_CONNECTION_SET_METHOD_WORKAROUND</link></entry>
-                        <entry><literal>jersey.config.client
-                            .httpUrlConnection.setMethodWorkaround</literal></entry>
-                        <entry>
-                            <para>
-                                Declares that the client will try to set unsupported HTTP method to <literal>HttpURLConnection</literal>
-                                via reflection. Default value is <literal>false</literal>.
-                            </para>
-                        </entry>
-                    </row>
-                    <row>
                         <entry>&jersey.client.ClientProperties.JSON_PROCESSING_FEATURE_DISABLE;</entry>
-                        <entry><literal>jersey.config.disableJsonProcessing.client</literal></entry>
+                        <entry><literal>jersey.config.client.disableJsonProcessing</literal></entry>
                         <entry>
                             <para>
                                 Disables configuration of Json Processing (JSR-353) feature. Default value is <literal>false</literal>.
@@ -483,7 +519,7 @@
                     </row>
                     <row>
                         <entry>&jersey.client.ClientProperties.MOXY_JSON_FEATURE_DISABLE;</entry>
-                        <entry><literal>jersey.config.disableMoxyJson.client</literal></entry>
+                        <entry><literal>jersey.config.client.disableMoxyJson</literal></entry>
                         <entry>
                             <para>
                                 Disables configuration of MOXy Json feature. Default value is <literal>false</literal>.
@@ -493,7 +529,7 @@
                     <row>
                         <entry>&jersey.client.ClientProperties.OUTBOUND_CONTENT_LENGTH_BUFFER;
                             (Jersey 2.2 or later)</entry>
-                        <entry><literal>jersey.config.contentLength.buffer.client</literal></entry>
+                        <entry><literal>jersey.config.client.contentLength.buffer</literal></entry>
                         <entry>
                             <para>
                                 An integer value that defines the buffer size used to buffer the outbound message entity in order to
@@ -503,7 +539,40 @@
                         </entry>
                     </row>
                     <row>
-                        <entry>&jersey.client.ClientProperties.READ_TIMEOUT;</entry>
+                        <entry>&jersey.client.ClientProperties.PROXY_URI;</entry>
+                        <entry><literal>jersey.config.client.proxy.uri</literal></entry>
+                        <entry>
+                            <para>
+                                URI of a HTTP proxy the client connector should use. Default value is not set.
+                                <emphasis>Currently supported with &jersey.apache.ApacheConnectorProvider; and
+                                    &jersey.jetty.JettyConnectorProvider; only.</emphasis>
+                            </para>
+                        </entry>
+                    </row>
+                    <row>
+                        <entry>&jersey.client.ClientProperties.PROXY_USERNAME; (Jersey 2.5 or later)</entry>
+                        <entry><literal>jersey.config.client.proxy.username</literal></entry>
+                        <entry>
+                            <para>
+                                User name which will be used for HTTP proxy authentication. Default value is not set.
+                                <emphasis>Currently supported with &jersey.apache.ApacheConnectorProvider; and
+                                    &jersey.jetty.JettyConnectorProvider; only.</emphasis>
+                            </para>
+                        </entry>
+                    </row>
+                    <row>
+                        <entry>&jersey.client.ClientProperties.PROXY_PASSWORD; (Jersey 2.5 or later)</entry>
+                        <entry><literal>jersey.config.client.proxy.password</literal></entry>
+                        <entry>
+                            <para>
+                                Password which will be used for HTTP proxy authentication. Default value is not set.
+                                <emphasis>Currently supported with &jersey.apache.ApacheConnectorProvider; and
+                                    &jersey.jetty.JettyConnectorProvider; only.</emphasis>
+                            </para>
+                        </entry>
+                    </row>
+                    <row>
+                        <entry>&jersey.client.ClientProperties.READ_TIMEOUT; (Jersey 2.5 or later)</entry>
                         <entry><literal>jersey.config.client.readTimeout</literal></entry>
                         <entry>
                             <para>
@@ -511,6 +580,19 @@
                             </para>
                         </entry>
                     </row>
+                    <row>
+                        <entry>&jersey.client.ClientProperties.REQUEST_ENTITY_PROCESSING; (Jersey 2.5 or later)</entry>
+                        <entry><literal>jersey.config.client.request.entity.processing</literal></entry>
+                        <entry>
+                            <para>
+                                Defines whether the request entity should be serialized using internal buffer to
+                                evaluate content length or chunk encoding should be used. Possible values are
+                                <literal>BUFFERED</literal> or <literal>CHUNKED</literal>. Default value is
+                                <literal>BUFFERED</literal>.
+                            </para>
+                        </entry>
+                    </row>
+
                     <row>
                         <entry>&jersey.client.ClientProperties.SUPPRESS_HTTP_COMPLIANCE_VALIDATION;
                             (Jersey 2.2 or later)</entry>

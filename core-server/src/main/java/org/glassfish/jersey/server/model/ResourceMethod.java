@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -41,6 +41,7 @@ package org.glassfish.jersey.server.model;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
+import java.lang.reflect.Type;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -58,10 +59,10 @@ import org.glassfish.jersey.model.NameBound;
 import org.glassfish.jersey.process.Inflector;
 import org.glassfish.jersey.uri.PathPattern;
 
-import com.google.common.base.Function;
-import com.google.common.collect.Collections2;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
+import jersey.repackaged.com.google.common.base.Function;
+import jersey.repackaged.com.google.common.collect.Collections2;
+import jersey.repackaged.com.google.common.collect.Lists;
+import jersey.repackaged.com.google.common.collect.Sets;
 
 /**
  * Model of a method available on a resource. Covers resource method, sub-resource
@@ -151,11 +152,14 @@ public final class ResourceMethod implements ResourceModelComponent, Producing, 
         // Invocable
         private Class<?> handlerClass;
         private Object handlerInstance;
+        private Method definitionMethod;
+
         private Method handlingMethod;
-        private Method validateMethod;
         private boolean encodedParams;
+        private Type routingResponseType;
         // NameBound
         private final Collection<Class<? extends Annotation>> nameBindings;
+        private boolean extended;
 
         /**
          * Create a resource method builder.
@@ -188,6 +192,32 @@ public final class ResourceMethod implements ResourceModelComponent, Producing, 
             this.encodedParams = false;
 
             this.nameBindings = Sets.newLinkedHashSet();
+        }
+
+
+        /* package */ Builder(final Resource.Builder parent, ResourceMethod originalMethod) {
+            this.parent = parent;
+            this.consumedTypes = Sets.newLinkedHashSet(originalMethod.getConsumedTypes());
+            this.producedTypes = Sets.newLinkedHashSet(originalMethod.getProducedTypes());
+            this.suspended = originalMethod.isSuspendDeclared();
+            this.suspendTimeout = originalMethod.getSuspendTimeout();
+            this.suspendTimeoutUnit = originalMethod.getSuspendTimeoutUnit();
+            this.nameBindings = originalMethod.getNameBindings();
+            this.httpMethod = originalMethod.getHttpMethod();
+            this.managedAsync = originalMethod.isManagedAsyncDeclared();
+
+            Invocable invocable = originalMethod.getInvocable();
+            this.handlingMethod = invocable.getHandlingMethod();
+            this.encodedParams = false;
+            this.routingResponseType = invocable.getRoutingResponseType();
+            this.extended = originalMethod.isExtended();
+            Method handlerMethod = invocable.getDefinitionMethod();
+            MethodHandler handler = invocable.getHandler();
+            if (handler.isClassBased()) {
+                handledBy(handler.getHandlerClass(), handlerMethod);
+            } else {
+                handledBy(handler.getHandlerInstance(), handlerMethod);
+            }
         }
 
         /**
@@ -358,14 +388,16 @@ public final class ResourceMethod implements ResourceModelComponent, Producing, 
          * Define a resource method handler binding.
          *
          * @param handlerClass concrete resource method handler class.
-         * @param method       handling method.
+         * @param method       method that will be executed as a resource method. The parameters initializes
+         *                     {@link org.glassfish.jersey.server.model.Invocable#getDefinitionMethod() invocable
+         *                     definition method}.
          * @return updated builder object.
          */
         public Builder handledBy(Class<?> handlerClass, Method method) {
             this.handlerInstance = null;
 
             this.handlerClass = handlerClass;
-            this.handlingMethod = method;
+            this.definitionMethod = method;
 
             return this;
         }
@@ -381,7 +413,7 @@ public final class ResourceMethod implements ResourceModelComponent, Producing, 
             this.handlerClass = null;
 
             this.handlerInstance = handlerInstance;
-            this.handlingMethod = method;
+            this.definitionMethod = method;
 
             return this;
         }
@@ -407,14 +439,56 @@ public final class ResourceMethod implements ResourceModelComponent, Producing, 
         }
 
         /**
-         * Define a method that should be used during resource bean validation phase.
+         * Define a specific method of the handling class that will be executed. If the method
+         * is not defined then the method will be equal to the method initialized by
+         * one of the {@code handledBy()} builder methods.
          *
-         * @param validateMethod method used for validation purposes.
+         * @param handlingMethod specific handling method.
          * @return updated builder object.
          */
-        public Builder validateUsing(final Method validateMethod) {
-            this.validateMethod = validateMethod;
+        public Builder handlingMethod(final Method handlingMethod) {
+            this.handlingMethod = handlingMethod;
 
+            return this;
+        }
+
+        /**
+         * Define the response entity type used during the routing for
+         * selection of the resource methods. If this method is not called then
+         * the {@link Invocable#getRoutingResponseType()} will be equal to
+         * {@link org.glassfish.jersey.server.model.Invocable#getResponseType()} which
+         * is the default configuration state.
+         *
+         * @param routingResponseType Routing response type.
+         * @return updated builder object.
+         * @see org.glassfish.jersey.server.model.Invocable#getRoutingResponseType()
+         */
+        public Builder routingResponseType(Type routingResponseType) {
+            this.routingResponseType = routingResponseType;
+
+            return this;
+        }
+
+        /**
+         * Get the flag indicating whether the resource method is extended or is a core of exposed RESTful API.
+         * The method defines the
+         * flag available at {@link org.glassfish.jersey.server.model.ResourceMethod#isExtended()}.
+         * <p>
+         * Extended resource model components are helper components that are not considered as a core of a
+         * RESTful API. These can be for example {@code OPTIONS} {@link ResourceMethod resource methods}
+         * added by {@link org.glassfish.jersey.server.model.ModelProcessor model processors}
+         * or {@code application.wadl} resource producing the WADL. Both resource are rather supportive
+         * than the core of RESTful API.
+         * </p>
+         *
+         * @param extended If {@code true} then resource method is marked as extended.
+         * @return updated builder object.
+         * @see org.glassfish.jersey.server.model.ExtendedResource
+         *
+         * @since 2.5.1
+         */
+        public Builder extended(boolean extended) {
+            this.extended = extended;
             return this;
         }
 
@@ -425,6 +499,7 @@ public final class ResourceMethod implements ResourceModelComponent, Producing, 
          * @return new resource method model.
          */
         public ResourceMethod build() {
+
             final Data methodData = new Data(
                     httpMethod,
                     consumedTypes,
@@ -434,7 +509,8 @@ public final class ResourceMethod implements ResourceModelComponent, Producing, 
                     suspendTimeout,
                     suspendTimeoutUnit,
                     createInvocable(),
-                    nameBindings);
+                    nameBindings,
+                    parent.isExtended() || extended);
 
             parent.onBuildMethod(this, methodData);
 
@@ -451,11 +527,7 @@ public final class ResourceMethod implements ResourceModelComponent, Producing, 
                 handler = MethodHandler.create(handlerInstance);
             }
 
-            if (validateMethod == null) {
-                return Invocable.create(handler, handlingMethod, encodedParams);
-            } else {
-                return Invocable.create(handler, handlingMethod, validateMethod, encodedParams);
-            }
+            return Invocable.create(handler, definitionMethod, handlingMethod, encodedParams, routingResponseType);
         }
     }
 
@@ -480,6 +552,8 @@ public final class ResourceMethod implements ResourceModelComponent, Producing, 
         // NameBound
         private final Collection<Class<? extends Annotation>> nameBindings;
 
+        private final boolean extended;
+
         private Data(final String httpMethod,
                      final Collection<MediaType> consumedTypes,
                      final Collection<MediaType> producedTypes,
@@ -487,7 +561,8 @@ public final class ResourceMethod implements ResourceModelComponent, Producing, 
                      final long suspendTimeout,
                      final TimeUnit suspendTimeoutUnit,
                      final Invocable invocable,
-                     final Collection<Class<? extends Annotation>> nameBindings) {
+                     final Collection<Class<? extends Annotation>> nameBindings,
+                     final boolean extended) {
             this.managedAsync = managedAsync;
             this.type = JaxrsType.classify(httpMethod);
 
@@ -501,6 +576,7 @@ public final class ResourceMethod implements ResourceModelComponent, Producing, 
             this.suspendTimeoutUnit = suspendTimeoutUnit;
 
             this.nameBindings = Collections.unmodifiableCollection(Lists.newArrayList(nameBindings));
+            this.extended = extended;
         }
 
         /**
@@ -587,6 +663,15 @@ public final class ResourceMethod implements ResourceModelComponent, Producing, 
          */
         /* package */ Invocable getInvocable() {
             return invocable;
+        }
+
+        /**
+         * Get the flag indicating whether the resource method is extended or is a core of exposed RESTful API.
+         *
+         * @return {@code true} if resource is extended.
+         */
+        /* package */ boolean isExtended() {
+            return extended;
         }
 
         /**
@@ -695,6 +780,29 @@ public final class ResourceMethod implements ResourceModelComponent, Producing, 
      */
     public Invocable getInvocable() {
         return data.getInvocable();
+    }
+
+    /**
+     * Get the flag indicating whether the resource method is extended or is a core of exposed RESTful API.
+     * <p>
+     * Extended resource model components are helper components that are not considered as a core of a
+     * RESTful API. These can be for example {@code OPTIONS} resource methods
+     * added by {@link org.glassfish.jersey.server.model.ModelProcessor model processors}
+     * or {@code application.wadl} resource producing the WADL. Both resource are rather supportive
+     * than the core of RESTful API.
+     * </p>
+     * <p>
+     * If not set the resource will not be defined as extended by default.
+     * </p>
+
+     *
+     * @return {@code true} if the method is extended.
+     * @see org.glassfish.jersey.server.model.ExtendedResource
+     *
+     * @since 2.5.1
+     */
+    public boolean isExtended() {
+        return data.extended;
     }
 
 

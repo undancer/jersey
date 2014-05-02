@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -37,7 +37,6 @@
  * only if the new code is made subject to such option by the copyright
  * holder.
  */
-
 package org.glassfish.jersey.tests.e2e.client;
 
 import java.util.concurrent.Future;
@@ -49,6 +48,7 @@ import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.client.Entity;
+import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
@@ -59,16 +59,15 @@ import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
 
 import org.junit.Test;
-
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-
-import junit.framework.Assert;
+import static org.junit.Assert.fail;
 
 /**
  * Tests HTTP methods and entity presence.
  *
  * @author Miroslav Fuksa (miroslav.fuksa at oracle.com)
- *
+ * @author Marek Potociar (marek.potociar at oracle.com)
  */
 public class HttpMethodEntityTest extends JerseyTest {
 
@@ -113,6 +112,39 @@ public class HttpMethodEntityTest extends JerseyTest {
         _test("OPTIONS", false, false);
     }
 
+    /**
+     * Reproducer for JERSEY-2370: Sending POST without body.
+     */
+    @Test
+    public void testEmptyPostWithoutContentType() {
+        final WebTarget resource = target().path("resource");
+        try {
+            final Future<Response> future = resource.request().async().post(null);
+            assertEquals(200, future.get().getStatus());
+
+            final Response response = resource.request().post(null);
+            assertEquals(200, response.getStatus());
+        } catch (Exception e) {
+            fail("Sending POST method without entity should not fail.");
+        }
+    }
+
+    /**
+     * Reproducer for JERSEY-2370: Sending POST without body.
+     */
+    @Test
+    public void testEmptyPostWithContentType() {
+        final WebTarget resource = target().path("resource");
+        try {
+            final Future<Response> future = resource.request().async().post(Entity.entity(null, "text/plain"));
+            assertEquals(200, future.get().getStatus());
+
+            final Response response = resource.request().post(Entity.entity(null, "text/plain"));
+            assertEquals(200, response.getStatus());
+        } catch (Exception e) {
+            fail("Sending POST method without entity should not fail.");
+        }
+    }
 
     public void _test(String method, boolean entityPresent, boolean shouldFail) {
         Entity entity = entityPresent ? Entity.entity("entity", MediaType.TEXT_PLAIN_TYPE) : null;
@@ -124,12 +156,12 @@ public class HttpMethodEntityTest extends JerseyTest {
         try {
             final Future<Response> future = target().path("resource").request().async().method(method, entity);
             if (shouldFail) {
-                Assert.fail("The method should fail.");
+                fail("The method should fail.");
             }
-            Assert.assertEquals(200, future.get().getStatus());
+            assertEquals(200, future.get().getStatus());
         } catch (Exception e) {
             if (!shouldFail) {
-                Assert.fail("The method " + method + " with entity=" + (entity != null) + " should not fail.");
+                fail("The method " + method + " with entity=" + (entity != null) + " should not fail.");
             }
         }
     }
@@ -137,13 +169,13 @@ public class HttpMethodEntityTest extends JerseyTest {
     public void _testSync(String method, Entity entity, boolean shouldFail) {
         try {
             final Response response = target().path("resource").request().method(method, entity);
-            Assert.assertEquals(200, response.getStatus());
+            assertEquals(200, response.getStatus());
             if (shouldFail) {
-                Assert.fail("The method should fail.");
+                fail("The method should fail.");
             }
         } catch (Exception e) {
             if (!shouldFail) {
-                Assert.fail("The method " + method + " with entityPresent=" + (entity != null) + " should not fail.");
+                fail("The method " + method + " with entityPresent=" + (entity != null) + " should not fail.");
             }
         }
     }

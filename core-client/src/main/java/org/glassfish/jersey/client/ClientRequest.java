@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -42,6 +42,8 @@ package org.glassfish.jersey.client;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.ConnectException;
+import java.net.NoRouteToHostException;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.util.Collection;
 import java.util.List;
@@ -65,17 +67,21 @@ import javax.ws.rs.ext.WriterInterceptor;
 import org.glassfish.jersey.client.internal.LocalizationMessages;
 import org.glassfish.jersey.internal.MapPropertiesDelegate;
 import org.glassfish.jersey.internal.PropertiesDelegate;
+import org.glassfish.jersey.internal.inject.ServiceLocatorSupplier;
+import org.glassfish.jersey.internal.util.PropertiesHelper;
 import org.glassfish.jersey.message.MessageBodyWorkers;
 import org.glassfish.jersey.message.internal.OutboundMessageContext;
 
-import com.google.common.base.Preconditions;
+import org.glassfish.hk2.api.ServiceLocator;
+
+import jersey.repackaged.com.google.common.base.Preconditions;
 
 /**
  * Jersey client request context.
  *
  * @author Marek Potociar (marek.potociar at oracle.com)
  */
-public class ClientRequest extends OutboundMessageContext implements ClientRequestContext {
+public class ClientRequest extends OutboundMessageContext implements ClientRequestContext, ServiceLocatorSupplier {
     // Request-scoped configuration instance
     private final ClientConfig clientConfig;
     // Request-scoped properties delegate
@@ -130,6 +136,67 @@ public class ClientRequest extends OutboundMessageContext implements ClientReque
         this.readerInterceptors = original.readerInterceptors;
         this.writerInterceptors = original.writerInterceptors;
         this.propertiesDelegate = new MapPropertiesDelegate(original.propertiesDelegate);
+    }
+
+    /**
+     * Resolve a property value for the specified property {@code name}.
+     *
+     * <p>
+     * The method returns the value of the property registered in the request-specific
+     * property bag, if available. If no property for the given property name is found
+     * in the request-specific property bag, the method looks at the properties stored
+     * in the {@link #getConfiguration() global client-runtime configuration} this request
+     * belongs to. If there is a value defined in the client-runtime configuration,
+     * it is returned, otherwise the method returns {@code null} if no such property is
+     * registered neither in the client runtime nor in the request-specific property bag.
+     * </p>
+     *
+     * @param name property name.
+     * @param type expected property class type.
+     * @param <T> property Java type.
+     * @return resolved property value or {@code null} if no such property is registered.
+     */
+    public <T> T resolveProperty(final String name, final Class<T> type) {
+        return resolveProperty(name, null, type);
+    }
+
+    /**
+     * Resolve a property value for the specified property {@code name}.
+     *
+     * <p>
+     * The method returns the value of the property registered in the request-specific
+     * property bag, if available. If no property for the given property name is found
+     * in the request-specific property bag, the method looks at the properties stored
+     * in the {@link #getConfiguration() global client-runtime configuration} this request
+     * belongs to. If there is a value defined in the client-runtime configuration,
+     * it is returned, otherwise the method returns {@code defaultValue} if no such property is
+     * registered neither in the client runtime nor in the request-specific property bag.
+     * </p>
+     *
+     * @param name property name.
+     * @param defaultValue default value to return if the property is not registered.
+     * @param <T> property Java type.
+     * @return resolved property value or {@code defaultValue} if no such property is registered.
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T resolveProperty(final String name, final T defaultValue) {
+        return resolveProperty(name, defaultValue, (Class<T>) defaultValue.getClass());
+    }
+
+    private <T> T resolveProperty(final String name, Object defaultValue, final Class <T> type) {
+        // Check runtime configuration first
+        Object result = clientConfig.getProperty(name);
+        if (result != null) {
+            defaultValue = result;
+        }
+
+        // Check request properties next
+        result = propertiesDelegate.getProperty(name);
+        if (result == null) {
+            result = defaultValue;
+        }
+
+        return (result == null) ? null : PropertiesHelper.convertValue(result, type);
     }
 
     @Override
@@ -446,6 +513,18 @@ public class ClientRequest extends OutboundMessageContext implements ClientReque
                 // the failure was caused by connection problems or by other circumstances
                 connectionFailed = true;
                 throw ce;
+            } catch (SocketTimeoutException e) {
+                // if MessageBodyWorkers.writeTo() fails because of non-routable target, SocketTimeOutException is thrown.
+                // In that case, exception is rethrown and the connectionFailed flag is set to prevent the attempt to commit.
+                // Calling commitStream() would lead to another wait time and the final timeout time would be twice as long
+                // as described in JERSEY-1984. Depending on a system and configuration, NoRouteToHostException may be thrown
+                // instead of SocketTimeoutException (see below).
+                connectionFailed = true;
+                throw e;
+            } catch (NoRouteToHostException e) {
+                // to cover all the cases, also NoRouteToHostException is to be handled similarly.
+                connectionFailed = true;
+                throw e;
             }
         } finally {
             // in case we've seen the ConnectException, we won't try to close/commit stream as this would produce just
@@ -522,5 +601,10 @@ public class ClientRequest extends OutboundMessageContext implements ClientReque
      */
     void setReaderInterceptors(Iterable<ReaderInterceptor> readerInterceptors) {
         this.readerInterceptors = readerInterceptors;
+    }
+
+    @Override
+    public ServiceLocator getServiceLocator() {
+        return getClientRuntime().getServiceLocator();
     }
 }

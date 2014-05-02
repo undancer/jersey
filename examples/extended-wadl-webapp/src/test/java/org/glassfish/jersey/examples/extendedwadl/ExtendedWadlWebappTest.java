@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -37,7 +37,6 @@
  * only if the new code is made subject to such option by the copyright
  * holder.
  */
-
 package org.glassfish.jersey.examples.extendedwadl;
 
 import java.io.ByteArrayInputStream;
@@ -46,9 +45,7 @@ import java.nio.charset.Charset;
 import java.util.logging.Logger;
 
 import javax.ws.rs.container.ContainerRequestContext;
-import javax.ws.rs.core.Application;
 import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriBuilder;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -63,16 +60,18 @@ import org.glassfish.jersey.process.Inflector;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.server.ServerProperties;
 import org.glassfish.jersey.server.model.Resource;
+import org.glassfish.jersey.server.wadl.internal.WadlUtils;
+import org.glassfish.jersey.test.DeploymentContext;
 import org.glassfish.jersey.test.JerseyTest;
 
 import org.junit.Test;
 import org.w3c.dom.Document;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-import static junit.framework.Assert.assertEquals;
-
 /**
+ * WADL extension example tests.
  *
  * @author Naresh
  * @author Miroslav Fuksa (miroslav.fuksa at oracle.com)
@@ -82,7 +81,7 @@ public class ExtendedWadlWebappTest extends JerseyTest {
     private static final Logger LOGGER = Logger.getLogger(ExtendedWadlWebappTest.class.getName());
 
     @Override
-    protected Application configure() {
+    protected DeploymentContext configureDeployment() {
         final ResourceConfig resourceConfig = new ResourceConfig(new MyApplication().getClasses());
         resourceConfig.property(ServerProperties.WADL_GENERATOR_CONFIG, "org.glassfish.jersey.examples.extendedwadl" +
                 ".SampleWadlGeneratorConfig");
@@ -92,22 +91,19 @@ public class ExtendedWadlWebappTest extends JerseyTest {
 
                 .handledBy(new ProgrammaticResource());
         resourceConfig.registerResources(resourceBuilder.build());
-        return resourceConfig;
-    }
-
-    @Override
-    protected URI getBaseUri() {
-        return UriBuilder.fromUri(super.getBaseUri()).path("extended-wadl-webapp").build();
+        return DeploymentContext.builder(resourceConfig).contextPath("extended-wadl-webapp").build();
     }
 
     /**
      * Test checks that the WADL generated using the WadlGenerator api doesn't
      * contain the expected text.
-     * @throws java.lang.Exception
+     *
+     * @throws java.lang.Exception in case of test error.
      */
     @Test
     public void testExtendedWadl() throws Exception {
-        String wadl = target().path("application.wadl").request(MediaTypes.WADL).get(String.class);
+        String wadl = target().path("application.wadl")
+                .queryParam(WadlUtils.DETAILED_WADL_QUERY_PARAM, "true").request(MediaTypes.WADL).get(String.class);
 
         LOGGER.fine(wadl);
         assertTrue("Generated wadl is of null length", wadl.length() > 0);
@@ -119,7 +115,8 @@ public class ExtendedWadlWebappTest extends JerseyTest {
 
     @Test
     public void testWadlOptionsMethod() throws Exception {
-        String wadl = target().path("items").request(MediaTypes.WADL).options(String.class);
+        String wadl = target().path("items")
+                .queryParam(WadlUtils.DETAILED_WADL_QUERY_PARAM, "true").request(MediaTypes.WADL).options(String.class);
 
         LOGGER.fine(wadl);
         assertTrue("Generated wadl is of null length", wadl.length() > 0);

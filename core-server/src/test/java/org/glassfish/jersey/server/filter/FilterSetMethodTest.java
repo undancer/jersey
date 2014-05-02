@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -37,12 +37,10 @@
  * only if the new code is made subject to such option by the copyright
  * holder.
  */
-
 package org.glassfish.jersey.server.filter;
 
 import java.io.IOException;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.concurrent.ExecutionException;
 
 import javax.ws.rs.GET;
@@ -64,13 +62,13 @@ import org.glassfish.jersey.server.RequestContextBuilder;
 import org.glassfish.jersey.server.ResourceConfig;
 
 import org.junit.Test;
-
-import junit.framework.Assert;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
 /**
  * Tests calling {@link ContainerRequestContext#setMethod(String)} in different request/response phases.
- * @author Miroslav Fuksa (miroslav.fuksa at oracle.com)
  *
+ * @author Miroslav Fuksa (miroslav.fuksa at oracle.com)
  */
 public class FilterSetMethodTest {
 
@@ -78,21 +76,21 @@ public class FilterSetMethodTest {
     public void testResponseFilter() throws ExecutionException, InterruptedException {
         ApplicationHandler handler = new ApplicationHandler(new ResourceConfig(Resource.class, ResponseFilter.class));
         ContainerResponse res = handler.apply(RequestContextBuilder.from("", "/resource/setMethod", "GET").build()).get();
-        Assert.assertEquals(200, res.getStatus());
+        assertEquals(200, res.getStatus());
     }
 
     @Test
     public void testPreMatchingFilter() throws ExecutionException, InterruptedException {
         ApplicationHandler handler = new ApplicationHandler(new ResourceConfig(Resource.class, PreMatchFilter.class));
         ContainerResponse res = handler.apply(RequestContextBuilder.from("", "/resource/setMethod", "GET").build()).get();
-        Assert.assertEquals(200, res.getStatus());
+        assertEquals(200, res.getStatus());
     }
 
     @Test
     public void testPostMatchingFilter() throws ExecutionException, InterruptedException {
         ApplicationHandler handler = new ApplicationHandler(new ResourceConfig(Resource.class, PostMatchFilter.class));
         ContainerResponse res = handler.apply(RequestContextBuilder.from("", "/resource/setMethod", "GET").build()).get();
-        Assert.assertEquals(200, res.getStatus());
+        assertEquals(200, res.getStatus());
     }
 
     @Test
@@ -100,7 +98,7 @@ public class FilterSetMethodTest {
         ApplicationHandler handler = new ApplicationHandler(new ResourceConfig(Resource.class, PostMatchFilter.class));
         ContainerResponse res = handler.apply(RequestContextBuilder.from("", "/resource/setMethodInResource",
                 "GET").build()).get();
-        Assert.assertEquals(200, res.getStatus());
+        assertEquals(200, res.getStatus());
     }
 
     @Test
@@ -108,7 +106,7 @@ public class FilterSetMethodTest {
         ApplicationHandler handler = new ApplicationHandler(new ResourceConfig(AnotherResource.class));
         ContainerResponse res = handler.apply(RequestContextBuilder.from("", "/another/locator",
                 "GET").build()).get();
-        Assert.assertEquals(200, res.getStatus());
+        assertEquals(200, res.getStatus());
     }
 
     @Test
@@ -117,8 +115,8 @@ public class FilterSetMethodTest {
                 PreMatchChangingUriFilter.class));
         ContainerResponse res = handler.apply(RequestContextBuilder.from("", "/resourceChangeUri/first",
                 "GET").build()).get();
-        Assert.assertEquals(200, res.getStatus());
-        Assert.assertEquals("ok", res.getEntity());
+        assertEquals(200, res.getStatus());
+        assertEquals("ok", res.getEntity());
     }
 
     @Path("resourceChangeUri")
@@ -127,7 +125,7 @@ public class FilterSetMethodTest {
         @Path("first")
         @GET
         public String first() {
-            Assert.fail("should not be called.");
+            fail("should not be called.");
             return "fail";
         }
 
@@ -144,12 +142,8 @@ public class FilterSetMethodTest {
     public static class PreMatchChangingUriFilter implements ContainerRequestFilter {
         @Override
         public void filter(ContainerRequestContext requestContext) throws IOException {
-            try {
-                final URI requestUri = new URI(requestContext.getUriInfo().getPath() + "/a");
-                requestContext.setRequestUri(requestUri);
-            } catch (URISyntaxException e) {
-                throw new RuntimeException(e);
-            }
+            final URI requestUri = requestContext.getUriInfo().getRequestUriBuilder().path("a").build();
+            requestContext.setRequestUri(requestUri);
         }
     }
 
@@ -236,7 +230,7 @@ public class FilterSetMethodTest {
     private static void checkExceptionThrown(Closure f) {
         try {
             f.f();
-            Assert.fail("Should throw IllegalArgumentException exception.");
+            fail("Should throw IllegalArgumentException exception.");
         } catch (IllegalStateException exception) {
             // ok - should throw IllegalArgumentException
         }

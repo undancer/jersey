@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -94,9 +94,9 @@ import org.glassfish.hk2.utilities.binding.AbstractBinder;
 
 import org.jvnet.hk2.annotations.Optional;
 
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
-import com.google.common.primitives.Primitives;
+import jersey.repackaged.com.google.common.collect.Lists;
+import jersey.repackaged.com.google.common.collect.Sets;
+import jersey.repackaged.com.google.common.primitives.Primitives;
 
 /**
  * A factory for managing {@link MessageBodyReader}, {@link MessageBodyWriter} instances.
@@ -184,6 +184,8 @@ public class MessageBodyFactory implements MessageBodyWorkers {
                 }
             };
 
+    private final ServiceLocator serviceLocator;
+
     private final Boolean legacyProviderOrdering;
 
     private final List<MbrModel> readers;
@@ -194,20 +196,22 @@ public class MessageBodyFactory implements MessageBodyWorkers {
     private final Map<MediaType, List<MessageBodyWriter>> writersCache =
             new KeyComparatorHashMap<MediaType, List<MessageBodyWriter>>(MEDIA_TYPE_COMPARATOR);
 
-    private final Map<Class<?>, List<MessageBodyReader>> mbrTypeLookupCache =
-            DataStructures.createConcurrentMap(32, 0.75f, DataStructures.DEFAULT_CONCURENCY_LEVEL);
-    private final Map<Class<?>, List<MessageBodyWriter>> mbwTypeLookupCache =
-            DataStructures.createConcurrentMap(32, 0.75f, DataStructures.DEFAULT_CONCURENCY_LEVEL);
+    private static final int LOOKUP_CACHE_INITIAL_CAPACITY = 32;
+    private static final float LOOKUP_CACHE_LOAD_FACTOR = 0.75f;
+    private final Map<Class<?>, List<MessageBodyReader>> mbrTypeLookupCache = DataStructures.createConcurrentMap(
+            LOOKUP_CACHE_INITIAL_CAPACITY, LOOKUP_CACHE_LOAD_FACTOR, DataStructures.DEFAULT_CONCURENCY_LEVEL);
+    private final Map<Class<?>, List<MessageBodyWriter>> mbwTypeLookupCache = DataStructures.createConcurrentMap(
+            LOOKUP_CACHE_INITIAL_CAPACITY, LOOKUP_CACHE_LOAD_FACTOR, DataStructures.DEFAULT_CONCURENCY_LEVEL);
 
-    private final Map<Class<?>, List<MediaType>> typeToMediaTypeReadersCache =
-            DataStructures.createConcurrentMap(32, 0.75f, DataStructures.DEFAULT_CONCURENCY_LEVEL);
-    private final Map<Class<?>, List<MediaType>> typeToMediaTypeWritersCache =
-            DataStructures.createConcurrentMap(32, 0.75f, DataStructures.DEFAULT_CONCURENCY_LEVEL);
+    private final Map<Class<?>, List<MediaType>> typeToMediaTypeReadersCache = DataStructures.createConcurrentMap(
+            LOOKUP_CACHE_INITIAL_CAPACITY, LOOKUP_CACHE_LOAD_FACTOR, DataStructures.DEFAULT_CONCURENCY_LEVEL);
+    private final Map<Class<?>, List<MediaType>> typeToMediaTypeWritersCache = DataStructures.createConcurrentMap(
+            LOOKUP_CACHE_INITIAL_CAPACITY, LOOKUP_CACHE_LOAD_FACTOR, DataStructures.DEFAULT_CONCURENCY_LEVEL);
 
-    private final Map<ModelLookupKey, List<MbrModel>> mbrLookupCache =
-            DataStructures.createConcurrentMap(32, 0.75f, DataStructures.DEFAULT_CONCURENCY_LEVEL);
-    private final Map<ModelLookupKey, List<MbwModel>> mbwLookupCache =
-            DataStructures.createConcurrentMap(32, 0.75f, DataStructures.DEFAULT_CONCURENCY_LEVEL);
+    private final Map<ModelLookupKey, List<MbrModel>> mbrLookupCache = DataStructures.createConcurrentMap(
+            LOOKUP_CACHE_INITIAL_CAPACITY, LOOKUP_CACHE_LOAD_FACTOR, DataStructures.DEFAULT_CONCURENCY_LEVEL);
+    private final Map<ModelLookupKey, List<MbwModel>> mbwLookupCache = DataStructures.createConcurrentMap(
+            LOOKUP_CACHE_INITIAL_CAPACITY, LOOKUP_CACHE_LOAD_FACTOR, DataStructures.DEFAULT_CONCURENCY_LEVEL);
 
     private static class WorkerModel<T> {
 
@@ -289,6 +293,7 @@ public class MessageBodyFactory implements MessageBodyWorkers {
      */
     @Inject
     public MessageBodyFactory(ServiceLocator locator, @Optional Configuration configuration) {
+        this.serviceLocator = locator;
         this.legacyProviderOrdering = configuration != null
                 && PropertiesHelper.isProperty(configuration.getProperty(MessageProperties.LEGACY_WORKERS_ORDERING));
 
@@ -700,10 +705,7 @@ public class MessageBodyFactory implements MessageBodyWorkers {
                 if (mediaType == null) {
                     return true;
                 }
-
-                if (MediaTypes.typeEqual(mediaType, mt) ||
-                        MediaTypes.typeEqual(MediaTypes.getTypeWildCart(mediaType), mt) ||
-                        MediaTypes.typeEqual(MediaTypes.GENERAL_MEDIA_TYPE, mt)) {
+                if (mediaType.isCompatible(mt)) {
                     return true;
                 }
             }
@@ -719,7 +721,14 @@ public class MessageBodyFactory implements MessageBodyWorkers {
                                                            List<MbrModel> models,
                                                            PropertiesDelegate propertiesDelegate) {
 
-        List<MbrModel> readers = mbrLookupCache.get(new ModelLookupKey(c, mediaType));
+        // Ensure a parameter-less lookup type to prevent excessive memory consumption
+        // reported in JERSEY-2297
+        final MediaType lookupType = mediaType == null || mediaType.getParameters().isEmpty() ?
+                mediaType :
+                new MediaType(mediaType.getType(), mediaType.getSubtype());
+
+        final ModelLookupKey lookupKey = new ModelLookupKey(c, lookupType);
+        List<MbrModel> readers = mbrLookupCache.get(lookupKey);
         if (readers == null) {
             readers = new ArrayList<MbrModel>();
 
@@ -729,7 +738,7 @@ public class MessageBodyFactory implements MessageBodyWorkers {
                 }
             }
             Collections.sort(readers, new WorkerComparator<MessageBodyReader>(c, mediaType));
-            mbrLookupCache.put(new ModelLookupKey(c, mediaType), readers);
+            mbrLookupCache.put(lookupKey, readers);
         }
 
         if (readers.isEmpty()) {
@@ -737,7 +746,7 @@ public class MessageBodyFactory implements MessageBodyWorkers {
         }
 
         final TracingLogger tracingLogger = TracingLogger.getInstance(propertiesDelegate);
-        MessageBodyReader <T> selected = null;
+        MessageBodyReader<T> selected = null;
         final Iterator<MbrModel> iterator = readers.iterator();
         while (iterator.hasNext()) {
             final MbrModel model = iterator.next();
@@ -831,8 +840,14 @@ public class MessageBodyFactory implements MessageBodyWorkers {
                                                            MediaType mediaType,
                                                            List<MbwModel> models,
                                                            PropertiesDelegate propertiesDelegate) {
+        // Ensure  a parameter-less lookup type to prevent excessive memory consumption
+        // reported in JERSEY-2297
+        final MediaType lookupType = mediaType == null || mediaType.getParameters().isEmpty() ?
+                mediaType :
+                new MediaType(mediaType.getType(), mediaType.getSubtype());
 
-        List<MbwModel> writers = mbwLookupCache.get(new ModelLookupKey(c, mediaType));
+        final ModelLookupKey lookupKey = new ModelLookupKey(c, lookupType);
+        List<MbwModel> writers = mbwLookupCache.get(lookupKey);
         if (writers == null) {
 
             writers = new ArrayList<MbwModel>();
@@ -843,7 +858,7 @@ public class MessageBodyFactory implements MessageBodyWorkers {
                 }
             }
             Collections.sort(writers, new WorkerComparator<MessageBodyWriter>(c, mediaType));
-            mbwLookupCache.put(new ModelLookupKey(c, mediaType), writers);
+            mbwLookupCache.put(lookupKey, writers);
         }
 
         if (writers.isEmpty()) {
@@ -885,7 +900,7 @@ public class MessageBodyFactory implements MessageBodyWorkers {
         }
 
         final TracingLogger tracingLogger = TracingLogger.getInstance(propertiesDelegate);
-        MessageBodyWriter <T> selected = null;
+        MessageBodyWriter<T> selected = null;
         final Iterator<MessageBodyWriter> iterator = writers.iterator();
         while (iterator.hasNext()) {
             final MessageBodyWriter p = iterator.next();
@@ -1102,7 +1117,7 @@ public class MessageBodyFactory implements MessageBodyWorkers {
                            Iterable<ReaderInterceptor> readerInterceptors,
                            boolean translateNce) throws WebApplicationException, IOException {
         ReaderInterceptorExecutor executor = new ReaderInterceptorExecutor(rawType, type, annotations, mediaType,
-                httpHeaders, propertiesDelegate, entityStream, this, readerInterceptors, translateNce);
+                httpHeaders, propertiesDelegate, entityStream, this, readerInterceptors, translateNce, serviceLocator);
         final TracingLogger tracingLogger = TracingLogger.getInstance(propertiesDelegate);
         final long timestamp = tracingLogger.timestamp(MsgTraceEvent.RI_SUMMARY);
         try {
@@ -1132,7 +1147,7 @@ public class MessageBodyFactory implements MessageBodyWorkers {
                                 Iterable<WriterInterceptor> writerInterceptors)
             throws IOException, WebApplicationException {
         WriterInterceptorExecutor executor = new WriterInterceptorExecutor(t, rawType, type, annotations, mediaType,
-                httpHeaders, propertiesDelegate, entityStream, this, writerInterceptors);
+                httpHeaders, propertiesDelegate, entityStream, this, writerInterceptors, serviceLocator);
         final TracingLogger tracingLogger = TracingLogger.getInstance(propertiesDelegate);
         final long timestamp = tracingLogger.timestamp(MsgTraceEvent.WI_SUMMARY);
         try {

@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -41,23 +41,27 @@
 package org.glassfish.jersey.server.mvc.internal;
 
 import java.lang.annotation.Annotation;
+import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.List;
 
+import javax.ws.rs.core.Configuration;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Variant;
 
+import org.glassfish.jersey.internal.util.PropertiesHelper;
 import org.glassfish.jersey.internal.util.collection.Ref;
 import org.glassfish.jersey.internal.util.collection.Refs;
 import org.glassfish.jersey.message.internal.MediaTypes;
 import org.glassfish.jersey.message.internal.VariantSelector;
 import org.glassfish.jersey.server.ContainerRequest;
 import org.glassfish.jersey.server.ExtendedUriInfo;
+import org.glassfish.jersey.server.mvc.MvcFeature;
 import org.glassfish.jersey.server.mvc.Template;
 import org.glassfish.jersey.server.mvc.Viewable;
 
-import com.google.common.base.Function;
-import com.google.common.collect.Lists;
+import jersey.repackaged.com.google.common.base.Function;
+import jersey.repackaged.com.google.common.collect.Lists;
 
 /**
  * Helper class to provide some common functionality related to MVC.
@@ -65,6 +69,8 @@ import com.google.common.collect.Lists;
  * @author Michal Gajdos (michal.gajdos at oracle.com)
  */
 public final class TemplateHelper {
+
+    private static final Charset DEFAULT_ENCODING = Charset.forName("UTF-8");
 
     /**
      * Return an absolute path to the given class where segments are separated using {@code delim} character and {@code path}
@@ -146,6 +152,24 @@ public final class TemplateHelper {
         }
 
         return null;
+    }
+
+    /**
+     * Get output encoding from configuration.
+     * @param configuration Configuration.
+     * @param suffix Template processor suffix of the
+     *               to configuration property {@link org.glassfish.jersey.server.mvc.MvcFeature#ENCODING}.
+     *
+     * @return Encoding read from configuration properties or a default encoding if no encoding is configured.
+     */
+    public static Charset getTemplateOutputEncoding(Configuration configuration, String suffix) {
+        final String enc = PropertiesHelper.getValue(configuration.getProperties(), MvcFeature.ENCODING + suffix,
+                String.class, null);
+        if (enc == null) {
+            return DEFAULT_ENCODING;
+        } else {
+            return Charset.forName(enc);
+        }
     }
 
     /**

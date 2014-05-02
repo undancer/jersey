@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -83,6 +83,7 @@ import org.glassfish.jersey.process.internal.RequestScoped;
 import org.glassfish.jersey.server.ApplicationHandler;
 import org.glassfish.jersey.server.ContainerRequest;
 import org.glassfish.jersey.server.ResourceConfig;
+import org.glassfish.jersey.server.ServerProperties;
 import org.glassfish.jersey.server.internal.InternalServerProperties;
 import org.glassfish.jersey.server.internal.RuntimeExecutorsBinder;
 import org.glassfish.jersey.server.spi.RequestScopedInitializer;
@@ -276,6 +277,12 @@ public class WebComponent {
      */
     final boolean forwardOn404;
     /**
+     * Cached value of configuration property
+     * {@link org.glassfish.jersey.server.ServerProperties#RESPONSE_SET_STATUS_OVER_SEND_ERROR}.
+     * If {@code true} method {@link HttpServletResponse#setStatus} is used over {@link HttpServletResponse#sendError}.
+     */
+    final boolean configSetStatusOverSendError;
+    /**
      * Asynchronous context delegate provider.
      */
     private final AsyncContextDelegateProvider asyncExtensionDelegate;
@@ -297,13 +304,16 @@ public class WebComponent {
         // SPI/extension hook to configure ResourceConfig
         configure(resourceConfig);
 
-        resourceConfig.register(new WebComponentBinder(resourceConfig.getProperties()));
+        AbstractBinder webComponentBinder = new WebComponentBinder(resourceConfig.getProperties());
+        resourceConfig.register(webComponentBinder);
 
-        this.appHandler = new ApplicationHandler(resourceConfig);
+        this.appHandler = new ApplicationHandler(resourceConfig, webComponentBinder);
+
         this.asyncExtensionDelegate = getAsyncExtensionDelegate();
         this.forwardOn404 = webConfig.getConfigType().equals(WebConfig.ConfigType.FilterConfig) &&
                 resourceConfig.isProperty(ServletProperties.FILTER_FORWARD_ON_404);
-
+        this.configSetStatusOverSendError = ServerProperties.getValue(resourceConfig.getProperties(),
+                ServerProperties.RESPONSE_SET_STATUS_OVER_SEND_ERROR, false, Boolean.class);
         this.backgroundTaskScheduler = appHandler.getServiceLocator()
                 .getService(ScheduledExecutorService.class, new RuntimeExecutorsBinder.BackgroundSchedulerLiteral());
     }
@@ -345,6 +355,7 @@ public class WebComponent {
 
             final ResponseWriter responseWriter = new ResponseWriter(
                     forwardOn404,
+                    configSetStatusOverSendError,
                     servletResponse,
                     asyncExtensionDelegate.createDelegate(servletRequest, servletResponse),
                     backgroundTaskScheduler);
@@ -368,7 +379,12 @@ public class WebComponent {
             });
         } catch (final HeaderValueException hve) {
             final Response.Status status = Response.Status.BAD_REQUEST;
-            servletResponse.sendError(status.getStatusCode(), status.getReasonPhrase());
+            if (configSetStatusOverSendError) {
+                servletResponse.reset();
+                servletResponse.setStatus(status.getStatusCode(), status.getReasonPhrase());
+            } else {
+                servletResponse.sendError(status.getStatusCode(), status.getReasonPhrase());
+            }
 
             return Values.of(status.getStatusCode());
         } catch (Exception e) {

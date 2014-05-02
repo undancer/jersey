@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -51,7 +51,6 @@ import org.glassfish.jersey.server.RequestContextBuilder;
 import org.glassfish.jersey.server.ResourceConfig;
 
 import org.junit.Test;
-
 import static org.junit.Assert.assertEquals;
 
 /**
@@ -206,8 +205,7 @@ public class PathParamAsPathSegmentTest {
         initiateWebApplication(PathSegs.class);
 
         assertEquals("z-b", app.apply(RequestContextBuilder.from("/x/y/z/edit/b", "GET").build()).get().getEntity());
-        // FIXME: gets x-z instead
-//        assertEquals("z-b", app.apply(Requests.from("///x/y/z/edit/b", "GET").build()).get().getEntity());
+        assertEquals("z-b", app.apply(RequestContextBuilder.from("///x/y/z/edit/b", "GET").build()).get().getEntity());
     }
 
     @Path("/{a: .+}")
@@ -237,7 +235,7 @@ public class PathParamAsPathSegmentTest {
                 @PathParam("b") List<PathSegment> b) {
             StringBuilder s = new StringBuilder();
             for (PathSegment p : a) {
-                if (p.getPath().length() == 0) {
+                if (p.getPath().isEmpty()) {
                     s.append('/');
                 } else {
                     s.append(p.getPath());
@@ -245,7 +243,7 @@ public class PathParamAsPathSegmentTest {
             }
             s.append('-');
             for (PathSegment p : b) {
-                if (p.getPath().length() == 0) {
+                if (p.getPath().isEmpty()) {
                     s.append('/');
                 } else {
                     s.append(p.getPath());
@@ -261,8 +259,8 @@ public class PathParamAsPathSegmentTest {
         initiateWebApplication(PathSegsList.class);
 
         assertEquals("xyz-b", app.apply(RequestContextBuilder.from("/x/y/z/edit/b", "GET").build()).get().getEntity());
-        // FIXME
-//        assertEquals("//xyz-b", app.apply(Requests.from("///x/y/z/edit/b", "GET").build()).get().getEntity());
+        assertEquals("//xyz-b", app.apply(RequestContextBuilder.from(
+                "http://localhost/", "http://localhost///x/y/z/edit/b", "GET").build()).get().getEntity());
     }
 
     @Path("/{a: .+}")

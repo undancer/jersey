@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -48,7 +48,7 @@ import org.glassfish.jersey.internal.util.PropertiesHelper;
 import org.glassfish.jersey.message.internal.TracingLogger;
 import org.glassfish.jersey.server.internal.ServerTraceEvent;
 
-import com.google.common.collect.Lists;
+import jersey.repackaged.com.google.common.collect.Lists;
 
 /**
  * Utilities for tracing support.
@@ -56,7 +56,7 @@ import com.google.common.collect.Lists;
  * @author Libor Kramolis (libor.kramolis at oracle.com)
  * @since 2.3
  */
-final class TracingUtils {
+public final class TracingUtils {
 
     private static final List<String> SUMMARY_HEADERS = Lists.newArrayList();
 
@@ -82,8 +82,7 @@ final class TracingUtils {
      * @param containerRequest request instance to get runtime properties to store {@link TracingLogger} instance to
      *                         if tracing support is enabled for the request.
      */
-    /*package*/
-    static void initTracingSupport(TracingConfig type, TracingLogger.Level appThreshold, ContainerRequest containerRequest) {
+    public static void initTracingSupport(TracingConfig type, TracingLogger.Level appThreshold, ContainerRequest containerRequest) {
         final TracingLogger tracingLogger;
         if (isTracingSupportEnabled(type, containerRequest)) {
             tracingLogger = TracingLogger.create(
@@ -102,8 +101,7 @@ final class TracingUtils {
      * @param request container request instance to get runtime properties
      *                to check if tracing support is enabled for the request.
      */
-    /*package*/
-    static void logStart(ContainerRequest request) {
+    public static void logStart(ContainerRequest request) {
         TracingLogger tracingLogger = TracingLogger.getInstance(request);
         if (tracingLogger.isLogEnabled(ServerTraceEvent.START)) {
             StringBuilder textSB = new StringBuilder();
@@ -151,7 +149,7 @@ final class TracingUtils {
      */
     /*package*/
     static TracingConfig getTracingConfig(Configuration configuration) {
-        final String tracingText = PropertiesHelper.getValue(configuration.getProperties(),
+        final String tracingText = ServerProperties.getValue(configuration.getProperties(),
                 ServerProperties.TRACING, String.class);
 
         final TracingConfig result;
@@ -181,7 +179,7 @@ final class TracingUtils {
      */
     /*package*/
     static TracingLogger.Level getTracingThreshold(Configuration configuration) {
-        final String thresholdText = PropertiesHelper.getValue(
+        final String thresholdText = ServerProperties.getValue(
                 configuration.getProperties(),
                 ServerProperties.TRACING_THRESHOLD, String.class);
 

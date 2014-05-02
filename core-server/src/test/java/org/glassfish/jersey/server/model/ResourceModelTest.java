@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -49,18 +49,15 @@ import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 
 import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
-import com.google.common.collect.Lists;
-
-import junit.framework.Assert;
-import static junit.framework.Assert.assertEquals;
-import static junit.framework.Assert.fail;
+import jersey.repackaged.com.google.common.collect.Lists;
 
 /**
  * Test {@link ResourceModel} and {@link RuntimeResourceModel}.
  *
  * @author Miroslav Fuksa (miroslav.fuksa at oracle.com)
- *
  */
 public class ResourceModelTest {
 
@@ -154,12 +151,12 @@ public class ResourceModelTest {
     public void testResourceModel() {
         ResourceModel resourceModel = getResourceModel();
         final List<Resource> rootResources = resourceModel.getRootResources();
-        Assert.assertEquals(3, rootResources.size());
-        Assert.assertEquals(3, resourceModel.getResources().size());
+        assertEquals(3, rootResources.size());
+        assertEquals(3, resourceModel.getResources().size());
         final Resource resourceA = ResourceTestUtils.getResource(getResourceModel().getRootResources(), "a");
         ResourceTestUtils.containsExactMethods(resourceA, false, "GET", "POST");
         final List<Resource> childResources = resourceA.getChildResources();
-        Assert.assertEquals(3, childResources.size());
+        assertEquals(3, childResources.size());
         ResourceTestUtils.containsExactMethods(ResourceTestUtils.getResource(childResources, "{child-template-x}"), false, "GET");
         ResourceTestUtils.containsExactMethods(ResourceTestUtils.getResource(childResources, "{child-template-y}"), false,
                 "POST");
@@ -271,8 +268,8 @@ public class ResourceModelTest {
         builder.addResource(Resource.from(NonRootResourceA.class));
         builder.addResource(Resource.from(NonRootResourceB.class));
         final ResourceModel model = builder.build();
-        Assert.assertEquals(2, model.getResources().size());
-        Assert.assertEquals(0, model.getRootResources().size());
+        assertEquals(2, model.getResources().size());
+        assertEquals(0, model.getRootResources().size());
     }
 
     @Test
@@ -281,7 +278,7 @@ public class ResourceModelTest {
         builder.addResource(Resource.from(NonRootResourceA.class));
         builder.addResource(Resource.from(NonRootResourceB.class));
         final ResourceModel model = builder.build();
-        Assert.assertEquals(1, model.getResources().size());
-        Assert.assertEquals(0, model.getRootResources().size());
+        assertEquals(1, model.getResources().size());
+        assertEquals(0, model.getRootResources().size());
     }
 }

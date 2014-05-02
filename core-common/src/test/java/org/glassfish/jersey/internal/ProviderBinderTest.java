@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2011-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -75,13 +75,11 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-import com.google.common.base.Function;
-import com.google.common.base.Predicate;
-import com.google.common.collect.Collections2;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
-
-import junit.framework.Assert;
+import jersey.repackaged.com.google.common.base.Function;
+import jersey.repackaged.com.google.common.base.Predicate;
+import jersey.repackaged.com.google.common.collect.Collections2;
+import jersey.repackaged.com.google.common.collect.Lists;
+import jersey.repackaged.com.google.common.collect.Sets;
 
 /**
  * ServiceProviders unit test.
@@ -227,36 +225,36 @@ public class ProviderBinderTest {
 
         ContainerRequestFilter requestFilter = getRequestFilter(locator);
         ContainerRequestFilter requestFilter2 = getRequestFilter(locator);
-        Assert.assertEquals(requestFilter, requestFilter2);
+        assertEquals(requestFilter, requestFilter2);
 
 
         ContainerResponseFilter responseFilter = getResponseFilter(locator);
         ContainerResponseFilter responseFilter2 = getResponseFilter(locator);
-        Assert.assertTrue(responseFilter == responseFilter2);
+        assertTrue(responseFilter == responseFilter2);
 
-        Assert.assertTrue(responseFilter == requestFilter);
+        assertTrue(responseFilter == requestFilter);
 
         // only one filter should be registered
         Collection<ContainerResponseFilter> filters = Providers.getCustomProviders(locator, ContainerResponseFilter.class);
-        Assert.assertEquals(1, filters.size());
+        assertEquals(1, filters.size());
 
         Child child = locator.getService(Child.class);
         Child child2 = locator.getService(Child.class);
 
-        Assert.assertTrue(child != responseFilter);
+        assertTrue(child != responseFilter);
 
-        Assert.assertTrue(child == child2);
+        assertTrue(child == child2);
     }
 
     private ContainerResponseFilter getResponseFilter(ServiceLocator locator) {
         ContainerResponseFilter responseFilter = locator.getService(ContainerResponseFilter.class, new CustomAnnotationImpl());
-        Assert.assertEquals(Child.class, responseFilter.getClass());
+        assertEquals(Child.class, responseFilter.getClass());
         return responseFilter;
     }
 
     private ContainerRequestFilter getRequestFilter(ServiceLocator locator) {
         ContainerRequestFilter requestFilter = locator.getService(ContainerRequestFilter.class, new CustomAnnotationImpl());
-        Assert.assertEquals(Child.class, requestFilter.getClass());
+        assertEquals(Child.class, requestFilter.getClass());
         return requestFilter;
     }
 

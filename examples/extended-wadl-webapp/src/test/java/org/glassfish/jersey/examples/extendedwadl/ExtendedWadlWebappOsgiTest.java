@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -39,7 +39,27 @@
  */
 package org.glassfish.jersey.examples.extendedwadl;
 
-import org.glassfish.grizzly.http.server.HttpServer;
+import java.io.ByteArrayInputStream;
+import java.net.URI;
+import java.nio.charset.Charset;
+import java.security.AccessController;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.logging.Logger;
+
+import javax.ws.rs.client.Client;
+import javax.ws.rs.client.ClientBuilder;
+import javax.ws.rs.core.Response;
+import javax.ws.rs.core.UriBuilder;
+
+import javax.inject.Inject;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathFactory;
+
 import org.glassfish.jersey.examples.extendedwadl.resources.ItemResource;
 import org.glassfish.jersey.examples.extendedwadl.resources.ItemsResource;
 import org.glassfish.jersey.examples.extendedwadl.resources.MyApplication;
@@ -50,6 +70,10 @@ import org.glassfish.jersey.internal.util.SimpleNamespaceResolver;
 import org.glassfish.jersey.message.internal.MediaTypes;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.server.ServerProperties;
+import org.glassfish.jersey.server.wadl.internal.WadlUtils;
+
+import org.glassfish.grizzly.http.server.HttpServer;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.ops4j.pax.exam.Configuration;
@@ -59,27 +83,7 @@ import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.BundleException;
 import org.w3c.dom.Document;
-
-import javax.inject.Inject;
-import javax.ws.rs.client.Client;
-import javax.ws.rs.client.ClientBuilder;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriBuilder;
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.xpath.XPath;
-import javax.xml.xpath.XPathConstants;
-import javax.xml.xpath.XPathFactory;
-import java.io.ByteArrayInputStream;
-import java.net.URI;
-import java.nio.charset.Charset;
-import java.security.AccessController;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.logging.Logger;
-
-import static junit.framework.Assert.assertEquals;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.ops4j.pax.exam.CoreOptions.junitBundles;
@@ -91,7 +95,6 @@ import static org.ops4j.pax.exam.CoreOptions.systemProperty;
 import static org.ops4j.pax.tinybundles.core.TinyBundles.bundle;
 
 /**
- *
  * @author Naresh
  * @author Miroslav Fuksa (miroslav.fuksa at oracle.com)
  * @author Jakub Podlesak (jakub.podlesak at oracle.com)
@@ -119,9 +122,6 @@ public class ExtendedWadlWebappOsgiTest {
                 // javax.annotation must go first!
                 mavenBundle().groupId("javax.annotation").artifactId("javax.annotation-api").versionAsInProject(),
 
-                // Google Guava
-                mavenBundle().groupId("com.google.guava").artifactId("guava").versionAsInProject(),
-
                 junitBundles(),
 
                 mavenBundle("org.ops4j.pax.url", "pax-url-mvn"),
@@ -133,7 +133,8 @@ public class ExtendedWadlWebappOsgiTest {
                 mavenBundle().groupId("org.glassfish.hk2").artifactId("hk2-utils").versionAsInProject(),
                 mavenBundle().groupId("org.glassfish.hk2.external").artifactId("javax.inject").versionAsInProject(),
                 mavenBundle().groupId("org.glassfish.hk2.external").artifactId("asm-all-repackaged").versionAsInProject(),
-                mavenBundle().groupId("org.glassfish.hk2.external").artifactId("cglib").versionAsInProject(),
+                mavenBundle().groupId("org.glassfish.hk2.external").artifactId("aopalliance-repackaged").versionAsInProject(),
+                mavenBundle().groupId("org.javassist").artifactId("javassist").versionAsInProject(),
 
                 // JAX-RS API
                 mavenBundle().groupId("javax.ws.rs").artifactId("javax.ws.rs-api").versionAsInProject(),
@@ -142,6 +143,8 @@ public class ExtendedWadlWebappOsgiTest {
                 mavenBundle().groupId("org.glassfish.jersey.core").artifactId("jersey-common").versionAsInProject(),
                 mavenBundle().groupId("org.glassfish.jersey.core").artifactId("jersey-server").versionAsInProject(),
                 mavenBundle().groupId("org.glassfish.jersey.core").artifactId("jersey-client").versionAsInProject(),
+                // Guava
+                mavenBundle().groupId("org.glassfish.jersey.bundles.repackaged").artifactId("jersey-guava").versionAsInProject(),
 
                 // jettison
                 mavenBundle().groupId("org.codehaus.jettison").artifactId("jettison").versionAsInProject(),
@@ -152,7 +155,6 @@ public class ExtendedWadlWebappOsgiTest {
                 // Grizzly
                 systemPackage("sun.misc"),       // required by grizzly-framework
                 mavenBundle().groupId("org.glassfish.grizzly").artifactId("grizzly-framework").versionAsInProject(),
-                mavenBundle().groupId("org.glassfish.grizzly").artifactId("grizzly-rcm").versionAsInProject(),
                 mavenBundle().groupId("org.glassfish.grizzly").artifactId("grizzly-http").versionAsInProject(),
                 mavenBundle().groupId("org.glassfish.grizzly").artifactId("grizzly-http-server").versionAsInProject(),
 
@@ -163,8 +165,6 @@ public class ExtendedWadlWebappOsgiTest {
                 // tinybundles + required dependencies
                 mavenBundle().groupId("org.ops4j.pax.tinybundles").artifactId("tinybundles").versionAsInProject(),
                 mavenBundle().groupId("biz.aQute.bnd").artifactId("bndlib").versionAsInProject(),
-
-
 
                 // create ad-hoc bundle
                 provision(
@@ -183,7 +183,7 @@ public class ExtendedWadlWebappOsgiTest {
                                 .set("Export-Package", MyApplication.class.getPackage().getName() + "," + SampleWadlGeneratorConfig.class.getPackage().getName())
                                 .set("DynamicImport-Package", "*")
                                 .set("Bundle-SymbolicName", "webapp").build())
-            )
+        )
         );
         final String localRepository = AccessController.doPrivileged(PropertiesHelper.getSystemProperty("localRepository"));
         if (localRepository != null) {
@@ -204,6 +204,7 @@ public class ExtendedWadlWebappOsgiTest {
     /**
      * Test checks that the WADL generated using the WadlGenerator api doesn't
      * contain the expected text.
+     *
      * @throws java.lang.Exception
      */
     @Test
@@ -256,7 +257,7 @@ public class ExtendedWadlWebappOsgiTest {
 
         assertFalse(wadl.contains("application.wadl/xsd0.xsd"));
 
-        server.stop();
+        server.shutdownNow();
     }
 
     @Test
@@ -279,7 +280,8 @@ public class ExtendedWadlWebappOsgiTest {
         final HttpServer server = GrizzlyHttpServerFactory.createHttpServer(baseUri, resourceConfig);
         final Client client = ClientBuilder.newClient();
 
-        String wadl = client.target(baseUri).path("items").request(MediaTypes.WADL).options(String.class);
+        String wadl = client.target(baseUri).path("items").queryParam(WadlUtils.DETAILED_WADL_QUERY_PARAM, "true")
+                .request(MediaTypes.WADL).options(String.class);
 
         assertTrue("Generated wadl is of null length", wadl.length() > 0);
         assertTrue("Generated wadl doesn't contain the expected text",
@@ -287,7 +289,7 @@ public class ExtendedWadlWebappOsgiTest {
 
         checkWadl(wadl, baseUri);
 
-        server.stop();
+        server.shutdownNow();
     }
 
 

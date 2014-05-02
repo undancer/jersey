@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -47,18 +47,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.ws.rs.ProcessingException;
+
 import javax.management.JMException;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
-import javax.ws.rs.ProcessingException;
 
 import org.glassfish.jersey.server.internal.LocalizationMessages;
 import org.glassfish.jersey.server.monitoring.ApplicationStatistics;
 import org.glassfish.jersey.server.monitoring.MonitoringStatistics;
 import org.glassfish.jersey.server.monitoring.MonitoringStatisticsListener;
 import org.glassfish.jersey.server.monitoring.ResourceStatistics;
+import org.glassfish.jersey.server.spi.AbstractContainerLifecycleListener;
+import org.glassfish.jersey.server.spi.Container;
 
-import com.google.common.collect.Maps;
+import jersey.repackaged.com.google.common.collect.Maps;
 
 /**
  * The main exposer class of Jersey JMX MBeans. The class creates MBeans and contains methods that
@@ -66,7 +69,7 @@ import com.google.common.collect.Maps;
  *
  * @author Miroslav Fuksa (miroslav.fuksa at oracle.com)
  */
-public class MBeanExposer implements MonitoringStatisticsListener {
+public class MBeanExposer extends AbstractContainerLifecycleListener implements MonitoringStatisticsListener {
 
     private static final String PROPERTY_SUBTYPE_GLOBAL = "Global";
     static final String PROPERTY_EXECUTION_TIMES_REQUESTS = "RequestTimes";
@@ -77,8 +80,14 @@ public class MBeanExposer implements MonitoringStatisticsListener {
     private volatile ResourcesMBeanGroup uriStatsGroup;
     private volatile ResourcesMBeanGroup resourceClassStatsGroup;
     private volatile ExceptionMapperMXBeanImpl exceptionMapperMXBean;
+    private final AtomicBoolean destroyed = new AtomicBoolean(false);
+    private final Object LOCK = new Object();
 
-    private final AtomicBoolean exposed = new AtomicBoolean(false);
+    /**
+     * Name of domain that will prefix mbeans {@link ObjectName}. The code uses this
+     * field also for synchronization purposes. If domain is {@code null}, no bean
+     * has been registered yet.
+     */
     private volatile String domain;
 
     private static final Logger LOGGER = Logger.getLogger(MBeanExposer.class.getName());
@@ -93,6 +102,27 @@ public class MBeanExposer implements MonitoringStatisticsListener {
     }
 
     /**
+     * Convert the resource name to a valid {@link javax.management.ObjectName object name}.
+     * @param name Resource name.
+     * @param isUri {@code true} if the resource name is an URI.
+     *
+     * @return Converted valid object name.
+     */
+    static String convertToObjectName(String name, boolean isUri) {
+        if (!isUri) {
+            return name;
+        }
+
+        String str = name.replace("\\", "\\\\");
+        str = str.replace("?", "\\?");
+        str = str.replace("*", "\\*");
+        StringBuilder sb = new StringBuilder();
+        sb.append("\"").append(str).append("\"");
+
+        return sb.toString();
+    }
+
+    /**
      * Register the MBean with the given postfix name.
      *
      * @param mbean MBean to be registered.
@@ -103,28 +133,41 @@ public class MBeanExposer implements MonitoringStatisticsListener {
         final MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
         final String name = domain + namePostfix;
         try {
-            final ObjectName objectName = new ObjectName(name);
-            if (mBeanServer.isRegistered(objectName)) {
+            synchronized (LOCK) {
+                if (destroyed.get()) {
+                    // already destroyed
+                    return;
+                }
+                final ObjectName objectName = new ObjectName(name);
+                if (mBeanServer.isRegistered(objectName)) {
 
-                LOGGER.log(Level.WARNING,
-                        LocalizationMessages.WARNING_MONITORING_MBEANS_BEAN_ALREADY_REGISTERED(objectName));
-                mBeanServer.unregisterMBean(objectName);
+                    LOGGER.log(Level.WARNING,
+                            LocalizationMessages.WARNING_MONITORING_MBEANS_BEAN_ALREADY_REGISTERED(objectName));
+                    mBeanServer.unregisterMBean(objectName);
+                }
+                mBeanServer.registerMBean(mbean, objectName);
             }
-
-            mBeanServer.registerMBean(mbean, objectName);
         } catch (JMException e) {
-
             throw new ProcessingException(LocalizationMessages.ERROR_MONITORING_MBEANS_REGISTRATION(name), e);
         }
     }
 
-
-    private void unregisterJerseyMBeans() {
+    private void unregisterJerseyMBeans(boolean destroy) {
         final MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
         try {
-            final Set<ObjectName> names = mBeanServer.queryNames(new ObjectName(domain + ",*"), null);
-            for (ObjectName name : names) {
-                mBeanServer.unregisterMBean(name);
+            synchronized (LOCK) {
+                if (destroy) {
+                    destroyed.set(true); // do not register new beans since now
+                }
+
+                if (domain == null) {
+                    // No bean has been registered yet.
+                    return;
+                }
+                final Set<ObjectName> names = mBeanServer.queryNames(new ObjectName(domain + ",*"), null);
+                for (ObjectName name : names) {
+                    mBeanServer.unregisterMBean(name);
+                }
             }
         } catch (Exception e) {
             throw new ProcessingException(LocalizationMessages.ERROR_MONITORING_MBEANS_UNREGISTRATION_DESTROY(), e);
@@ -133,7 +176,7 @@ public class MBeanExposer implements MonitoringStatisticsListener {
 
     @Override
     public void onStatistics(MonitoringStatistics statistics) {
-        if (exposed.compareAndSet(false, true)) {
+        if (domain == null) {
             final String globalSubType = ",subType=" + PROPERTY_SUBTYPE_GLOBAL;
 
             final ApplicationStatistics appStats = statistics.getApplicationStatistics();
@@ -142,7 +185,7 @@ public class MBeanExposer implements MonitoringStatisticsListener {
                 appName = "App_" + Integer.toHexString(appStats.getResourceConfig().hashCode());
             }
             domain = "org.glassfish.jersey:type=" + appName;
-            unregisterJerseyMBeans();
+            unregisterJerseyMBeans(false);
 
             uriStatsGroup = new ResourcesMBeanGroup(statistics.getUriStatistics(), true, this, ",subType=Uris");
             Map<String, ResourceStatistics> newMap = transformToStringKeys(statistics.getResourceClassStatistics());
@@ -161,17 +204,15 @@ public class MBeanExposer implements MonitoringStatisticsListener {
             new ApplicationMXBeanImpl(appStats, this, globalSubType);
         }
 
-        if (statistics.getApplicationStatistics().getDestroyTime() != null) {
-            unregisterJerseyMBeans();
-        }
-
         requestMBean.updateExecutionStatistics(statistics.getRequestStatistics());
         uriStatsGroup.updateResourcesStatistics(statistics.getUriStatistics());
         responseMXBean.updateResponseStatistics(statistics.getResponseStatistics());
         exceptionMapperMXBean.updateExceptionMapperStatistics(statistics.getExceptionMapperStatistics());
         this.resourceClassStatsGroup.updateResourcesStatistics(transformToStringKeys(statistics.getResourceClassStatistics()));
-
     }
 
-
+    @Override
+    public void onShutdown(Container container) {
+        unregisterJerseyMBeans(true);
+    }
 }

@@ -1,7 +1,7 @@
 /*
 * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
 *
-* Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+* Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
 *
 * The contents of this file are subject to the terms of either the GNU
 * General Public License Version 2 only ("GPL") or the Common Development
@@ -56,10 +56,10 @@ import javax.ws.rs.core.MediaType;
 import org.glassfish.jersey.server.RequestContextBuilder;
 
 import org.junit.Test;
-
-import junit.framework.Assert;
-
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThat;
 
 /**
  *
@@ -116,7 +116,7 @@ public class EncodedParamsTest extends AbstractTest {
         form.param("f", ":f");
         RequestContextBuilder requestBuilder = RequestContextBuilder.from("/%20u;m=%20m?q=%20q",
                 "POST").type(MediaType.APPLICATION_FORM_URLENCODED_TYPE).entity(form);
-        Assert.assertEquals("content", apply(requestBuilder.build()).getEntity());
+        assertEquals("content", apply(requestBuilder.build()).getEntity());
     }
 
     @Test
@@ -127,7 +127,7 @@ public class EncodedParamsTest extends AbstractTest {
         form.param("f2", ":f2");
         RequestContextBuilder requestBuilder = RequestContextBuilder.from("/%20u/combined;m=%20m?q=%20q",
                 "POST").type(MediaType.APPLICATION_FORM_URLENCODED_TYPE).entity(form);
-        Assert.assertEquals("content", apply(requestBuilder.build()).getEntity());
+        assertEquals("content", apply(requestBuilder.build()).getEntity());
     }
 
     @Encoded
@@ -268,5 +268,45 @@ public class EncodedParamsTest extends AbstractTest {
         initiateWebApplication(MixedEncodedOnParameters.class);
 
         _test("/%20u;m=%20m?q=%20q");
+    }
+
+    @Path("/")
+    public static class EncodedOnFormParameters {
+
+        public EncodedOnFormParameters(
+                @Encoded @FormParam("u") String ue,
+                @FormParam("u") String u) {
+
+            assertThat(ue, is("%C5%A1"));
+            assertThat(ue, is(not("\u0161")));
+
+            assertThat(u, is(not("%C5%A1")));
+            assertThat(u, is("\u0161"));
+        }
+
+        @POST
+        public String doPost(
+                @Encoded @FormParam("u") String ue,
+                @FormParam("u") String u) {
+
+            assertThat(ue, is("%C5%A1"));
+            assertThat(ue, is(not("\u0161")));
+
+            assertThat(u, is(not("%C5%A1")));
+            assertThat(u, is("\u0161"));
+
+            return "content";
+        }
+    }
+
+    @Test
+    public void testEncodedOnFormParameters() throws ExecutionException, InterruptedException {
+        initiateWebApplication(EncodedOnFormParameters.class);
+
+        final RequestContextBuilder requestBuilder = RequestContextBuilder.from("/", "POST")
+                .type(MediaType.APPLICATION_FORM_URLENCODED)
+                .entity(new Form("u", "\u0161"));
+
+        apply(requestBuilder.build());
     }
 }

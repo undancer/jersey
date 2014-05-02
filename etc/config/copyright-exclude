@@ -23,6 +23,7 @@
 .war
 .zip
 .dat
+/docs/src/main/docbook/inc/*.src
 jaxb.index
 /MANIFEST.MF
 /META-INF/services/
@@ -46,3 +47,6 @@ truststore_server
 bootstrap
 build.readme
 /tests/e2e/entity/multipart-testcase.txt
+/tests/e2e/server/mvc/MvcEncodingTest/FreemarkerResource.ftl
+/tests/e2e/server/mvc/MvcEncodingTest/MustacheResource.mustache
+/test/resources/org/glassfish/jersey/server/config/jaxrs-components

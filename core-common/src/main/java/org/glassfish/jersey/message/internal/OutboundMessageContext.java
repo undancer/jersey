@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -72,12 +72,11 @@ import javax.ws.rs.ext.RuntimeDelegate;
 
 import org.glassfish.jersey.CommonProperties;
 import org.glassfish.jersey.internal.LocalizationMessages;
-import org.glassfish.jersey.internal.util.PropertiesHelper;
 import org.glassfish.jersey.internal.util.ReflectionHelper;
 
-import com.google.common.base.Function;
-import com.google.common.collect.Collections2;
-import com.google.common.collect.Lists;
+import jersey.repackaged.com.google.common.base.Function;
+import jersey.repackaged.com.google.common.collect.Collections2;
+import jersey.repackaged.com.google.common.collect.Lists;
 
 /**
  * Base outbound message context implementation.
@@ -121,7 +120,7 @@ public class OutboundMessageContext {
      * Create new outbound message context.
      */
     public OutboundMessageContext() {
-        this.headers = HeadersFactory.createOutbound();
+        this.headers = HeaderUtils.createOutbound();
         this.committingOutputStream = new CommittingOutputStream();
         this.entityStream = committingOutputStream;
     }
@@ -133,7 +132,7 @@ public class OutboundMessageContext {
      * @param original the original outbound message context.
      */
     public OutboundMessageContext(OutboundMessageContext original) {
-        this.headers = HeadersFactory.createOutbound();
+        this.headers = HeaderUtils.createOutbound();
         this.headers.putAll(original.headers);
         this.committingOutputStream = new CommittingOutputStream();
         this.entityStream = committingOutputStream;
@@ -162,7 +161,7 @@ public class OutboundMessageContext {
      * @return multi-valued map of outbound message header names to their string-converted values.
      */
     public MultivaluedMap<String, String> getStringHeaders() {
-        return HeadersFactory.asStringHeaders(headers);
+        return HeaderUtils.asStringHeaders(headers);
     }
 
     /**
@@ -182,7 +181,7 @@ public class OutboundMessageContext {
      *         character.
      */
     public String getHeaderString(String name) {
-        return HeadersFactory.asHeaderString(headers.get(name), RuntimeDelegate.getInstance());
+        return HeaderUtils.asHeaderString(headers.get(name), RuntimeDelegate.getInstance());
     }
 
     /**
@@ -217,7 +216,7 @@ public class OutboundMessageContext {
             return valueType.cast(value);
         } else {
             try {
-                return converter.apply(HeadersFactory.asString(value, null));
+                return converter.apply(HeaderUtils.asString(value, null));
             } catch (ProcessingException ex) {
                 throw exception(name, value, ex);
             }
@@ -311,7 +310,7 @@ public class OutboundMessageContext {
             } else {
                 conversionApplied = true;
                 try {
-                    result.addAll(HttpHeaderReader.readAcceptMediaType(HeadersFactory.asString(value, rd)));
+                    result.addAll(HttpHeaderReader.readAcceptMediaType(HeaderUtils.asString(value, rd)));
                 } catch (java.text.ParseException e) {
                     throw exception(HttpHeaders.ACCEPT, value, e);
                 }
@@ -353,7 +352,7 @@ public class OutboundMessageContext {
             } else {
                 conversionApplied = true;
                 try {
-                    result.addAll(Lists.transform(HttpHeaderReader.readAcceptLanguage(HeadersFactory.asString(value, rd)),
+                    result.addAll(Lists.transform(HttpHeaderReader.readAcceptLanguage(HeaderUtils.asString(value, rd)),
                             new Function<AcceptableLanguageTag, Locale>() {
 
                                 @Override
@@ -392,7 +391,7 @@ public class OutboundMessageContext {
         }
 
         Map<String, Cookie> result = new HashMap<String, Cookie>();
-        for (String cookie : HeadersFactory.asStringList(cookies, RuntimeDelegate.getInstance())) {
+        for (String cookie : HeaderUtils.asStringList(cookies, RuntimeDelegate.getInstance())) {
             if (cookie != null) {
                 result.putAll(HttpHeaderReader.readCookies(cookie));
             }
@@ -449,7 +448,7 @@ public class OutboundMessageContext {
         }
 
         Map<String, NewCookie> result = new HashMap<String, NewCookie>();
-        for (String cookie : HeadersFactory.asStringList(cookies, RuntimeDelegate.getInstance())) {
+        for (String cookie : HeaderUtils.asStringList(cookies, RuntimeDelegate.getInstance())) {
             if (cookie != null) {
                 NewCookie newCookie = HttpHeaderReader.readNewCookie(cookie);
                 result.put(newCookie.getName(), newCookie);
@@ -533,7 +532,7 @@ public class OutboundMessageContext {
             } else {
                 conversionApplied = true;
                 try {
-                    result.add(Link.valueOf(HeadersFactory.asString(value, rd)));
+                    result.add(Link.valueOf(HeaderUtils.asString(value, rd)));
                 } catch (IllegalArgumentException e) {
                     throw exception(HttpHeaders.LINK, value, e);
                 }
@@ -739,7 +738,7 @@ public class OutboundMessageContext {
      * @return entity annotations.
      */
     public Annotation[] getEntityAnnotations() {
-        return entityAnnotations;
+        return entityAnnotations.clone();
     }
 
     /**
@@ -779,7 +778,7 @@ public class OutboundMessageContext {
      * @param configuration runtime configuration.
      */
     public void enableBuffering(Configuration configuration) {
-        final Integer bufferSize = PropertiesHelper.getValue(configuration.getProperties(),
+        final Integer bufferSize = CommonProperties.getValue(configuration.getProperties(),
                 configuration.getRuntimeType(), CommonProperties.OUTBOUND_CONTENT_LENGTH_BUFFER, Integer.class);
         if (bufferSize != null) {
             committingOutputStream.enableBuffering(bufferSize);

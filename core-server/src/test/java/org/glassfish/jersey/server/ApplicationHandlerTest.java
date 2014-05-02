@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -39,11 +39,23 @@
  */
 package org.glassfish.jersey.server;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Type;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ExecutionException;
 
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
+import javax.ws.rs.Produces;
+import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.container.ContainerRequestFilter;
 import javax.ws.rs.container.ContainerResponseContext;
@@ -54,14 +66,22 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Feature;
 import javax.ws.rs.core.FeatureContext;
 import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Request;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.ext.MessageBodyWriter;
+import javax.ws.rs.ext.ReaderInterceptor;
+import javax.ws.rs.ext.ReaderInterceptorContext;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
+import org.glassfish.jersey.message.internal.MessageBodyProviderNotFoundException;
 import org.glassfish.jersey.process.Inflector;
+import org.glassfish.jersey.server.internal.process.MappableException;
 import org.glassfish.jersey.server.model.ModelValidationException;
+import org.glassfish.jersey.server.spi.ResponseErrorMapper;
 
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
@@ -77,8 +97,6 @@ import static org.junit.Assert.fail;
  * @author Michal Gajdos (michal.gajdos at oracle.com)
  */
 public class ApplicationHandlerTest {
-
-    ApplicationHandler application;
 
     private ApplicationHandler createApplication(Class<?>... classes) {
         final ResourceConfig resourceConfig = new ResourceConfig(classes);
@@ -395,5 +413,181 @@ public class ApplicationHandlerTest {
         response = ah.apply(RequestContextBuilder.from("/defaultinstance", "GET").build()).get();
         assertEquals(200, response.getStatus());
         assertEquals("2", response.getEntity());
+    }
+
+    public static class Jersey2402 extends Application {
+
+        @Override
+        public Set<Class<?>> getClasses() {
+            return new HashSet<Class<?>>() {{
+                add(Jersey2402Feature.class);
+                add(Jersey2402Resource.class);
+            }};
+        }
+
+        @Override
+        public Map<String, Object> getProperties() {
+            return Collections.<String, Object>singletonMap("foo", "bar");
+        }
+    }
+
+    public static class Jersey2402Feature implements Feature {
+
+        @Override
+        public boolean configure(final FeatureContext context) {
+            final String property = context.getConfiguration().getProperty("foo") != null ?
+                    (String) context.getConfiguration().getProperty("foo") : "baz";
+
+            context.register(new ReaderInterceptor() {
+                @Override
+                public Object aroundReadFrom(final ReaderInterceptorContext context) throws IOException, WebApplicationException {
+                    context.setInputStream(new ByteArrayInputStream(property.getBytes()));
+                    return context.proceed();
+                }
+            });
+
+            return true;
+        }
+    }
+
+    @Path("/")
+    public static class Jersey2402Resource {
+
+        @POST
+        public String post(final String post) {
+            return post;
+        }
+    }
+
+    /**
+     * JERSEY-2402 reproducer.
+     *
+     * Test that property set via Application#getProperties() are available in features.
+     */
+    @Test
+    public void testPropagationOfPropertiesToFeatures() throws Exception {
+        final ApplicationHandler handler = new ApplicationHandler(Jersey2402.class);
+
+        final ContainerResponse response = handler.apply(RequestContextBuilder.from("/", "POST").build()).get();
+        assertEquals(200, response.getStatus());
+        assertEquals("bar", response.getEntity());
+    }
+
+    public static class MapResponseErrorApplication extends Application {
+
+        @Override
+        public Set<Class<?>> getClasses() {
+            return new HashSet<Class<?>>() {{
+                add(MapResponseErrorResource.class);
+                add(MyResponseErrorMapper.class);
+                add(ResponseErrorEntityWriter.class);
+            }};
+        }
+
+        @Override
+        public Map<String, Object> getProperties() {
+            return new HashMap<String, Object>() {{
+                put(ServerProperties.PROCESSING_RESPONSE_ERRORS_ENABLED, true);
+            }};
+        }
+    }
+
+    public static class ResponseErrorEntity {
+
+        private String value;
+
+        public ResponseErrorEntity() {
+        }
+
+        public ResponseErrorEntity(final String value) {
+            this.value = value;
+        }
+
+        public String getValue() {
+            return value;
+        }
+
+        public void setValue(final String value) {
+            this.value = value;
+        }
+    }
+
+    public static class MyResponseErrorMapper implements ResponseErrorMapper {
+
+        @Override
+        public Response toResponse(final Throwable exception) {
+            if (exception instanceof MessageBodyProviderNotFoundException || exception instanceof WebApplicationException) {
+                return Response.ok().entity("bar").build();
+            } else if (exception instanceof MappableException || exception instanceof RuntimeException) {
+                return Response.ok().entity(new ResponseErrorEntity("bar")).type("foo/bar").build();
+            }
+            return null;
+        }
+    }
+
+    @Produces("foo/bar")
+    public static class ResponseErrorEntityWriter implements MessageBodyWriter<ResponseErrorEntity> {
+
+        @Override
+        public boolean isWriteable(final Class<?> type, final Type genericType, final Annotation[] annotations,
+                                   final MediaType mediaType) {
+            return true;
+        }
+
+        @Override
+        public long getSize(final ResponseErrorEntity responseErrorEntity, final Class<?> type, final Type genericType,
+                            final Annotation[] annotations, final MediaType mediaType) {
+            return 0;
+        }
+
+        @Override
+        public void writeTo(final ResponseErrorEntity responseErrorEntity, final Class<?> type, final Type genericType,
+                            final Annotation[] annotations, final MediaType mediaType, final MultivaluedMap<String,
+                Object> httpHeaders, final OutputStream entityStream) throws IOException, WebApplicationException {
+            throw new RuntimeException("Cannot do that!");
+        }
+    }
+
+    @Path("/")
+    public static class MapResponseErrorResource {
+
+        @GET
+        @Produces("application/json")
+        public ResponseErrorEntity get() {
+            return new ResponseErrorEntity("foo");
+        }
+
+        @GET
+        @Produces("foo/bar")
+        @Path("foobar")
+        public ResponseErrorEntity getFooBar() {
+            return get();
+        }
+    }
+
+    /**
+     * Test that un-mapped response errors are tried to be processed (MBW).
+     */
+    @Test
+    public void testMapResponseErrorForMbw() throws Exception {
+        final ApplicationHandler handler = new ApplicationHandler(MapResponseErrorApplication.class);
+
+        final ContainerRequest context = RequestContextBuilder.from("/", "GET").build();
+        final ContainerResponse response = handler.apply(context).get();
+
+        assertEquals(200, response.getStatus());
+        assertEquals("bar", response.getEntity());
+    }
+
+    /**
+     * Test that un-mapped response errors are tried to be processed only once (MBW).
+     */
+    @Test(expected = ExecutionException.class)
+    public void testMapCyclicResponseErrorForMbw() throws Exception {
+        final ApplicationHandler handler = new ApplicationHandler(MapResponseErrorApplication.class);
+
+        final ContainerRequest context = RequestContextBuilder.from("/foobar", "GET").build();
+
+        handler.apply(context).get();
     }
 }

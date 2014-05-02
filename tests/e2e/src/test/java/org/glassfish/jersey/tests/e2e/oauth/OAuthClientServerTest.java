@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -44,12 +44,12 @@ import java.net.URI;
 import java.security.Principal;
 import java.util.logging.Logger;
 
-import javax.inject.Inject;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 import javax.ws.rs.QueryParam;
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
+import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Feature;
@@ -57,6 +57,8 @@ import javax.ws.rs.core.MultivaluedHashMap;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
 import javax.ws.rs.core.UriBuilder;
+
+import javax.inject.Inject;
 
 import org.glassfish.jersey.client.oauth1.AccessToken;
 import org.glassfish.jersey.client.oauth1.ConsumerCredentials;
@@ -67,14 +69,15 @@ import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.server.oauth1.DefaultOAuth1Provider;
 import org.glassfish.jersey.server.oauth1.OAuth1Provider;
 import org.glassfish.jersey.server.oauth1.OAuth1ServerFeature;
+import org.glassfish.jersey.server.oauth1.OAuth1ServerProperties;
 import org.glassfish.jersey.test.JerseyTest;
 
 import org.junit.Assert;
 import org.junit.Test;
 
-import com.google.common.collect.Sets;
-
 import com.sun.security.auth.UserPrincipal;
+
+import jersey.repackaged.com.google.common.collect.Sets;
 
 /**
  * Tests client and server OAuth 1 functionality.
@@ -112,6 +115,8 @@ public class OAuthClientServerTest extends JerseyTest {
         resourceConfig.register(MyProtectedResource.class);
         resourceConfig.register(new LoggingFilter(Logger.getLogger(OAuthClientServerTest.class.getName()), true));
         resourceConfig.register(OAuthAuthorizationResource.class);
+        resourceConfig.property(OAuth1ServerProperties.TIMESTAMP_UNIT, "SECONDS");
+        resourceConfig.property(OAuth1ServerProperties.MAX_NONCE_CACHE_SIZE, 20);
         return resourceConfig;
     }
 
@@ -203,11 +208,45 @@ public class OAuthClientServerTest extends JerseyTest {
         final Client client = ClientBuilder.newBuilder()
                 .register(filterFeature).build();
         final URI resourceUri = UriBuilder.fromUri(getBaseUri()).path("resource").build();
-        Response response = client.target(resourceUri).request().get();
-        Assert.assertEquals(200, response.getStatus());
-        Assert.assertEquals("prometheus", response.readEntity(String.class));
-        response = client.target(resourceUri).path("admin").request().get();
-        Assert.assertEquals(200, response.getStatus());
-        Assert.assertEquals(true, response.readEntity(boolean.class));
+        final WebTarget target = client.target(resourceUri);
+        Response response;
+        for (int i = 0; i < 15; i++) {
+            System.out.println("request: " + i);
+            response = target.request().get();
+            Assert.assertEquals(200, response.getStatus());
+            Assert.assertEquals("prometheus", response.readEntity(String.class));
+            i++;
+            response = target.path("admin").request().get();
+            Assert.assertEquals(200, response.getStatus());
+            Assert.assertEquals(true, response.readEntity(boolean.class));
+        }
+    }
+
+    /**
+     * Tests configuration of the nonce cache on the server side.
+     */
+    @Test
+    public void testRequestSigningWithExceedingCache() {
+        final Feature filterFeature = OAuth1ClientSupport.builder(
+                new ConsumerCredentials(CONSUMER_KEY, SECRET_CONSUMER_KEY)).feature()
+                .accessToken(new AccessToken(PROMETHEUS_TOKEN, PROMETHEUS_SECRET)).build();
+        final Client client = ClientBuilder.newBuilder()
+                .register(filterFeature).build();
+        final URI resourceUri = UriBuilder.fromUri(getBaseUri()).path("resource").build();
+        final WebTarget target = client.target(resourceUri);
+        Response response;
+        for (int i = 0; i < 20; i++) {
+            System.out.println("request: " + i);
+            response = target.request().get();
+            Assert.assertEquals(200, response.getStatus());
+            Assert.assertEquals("prometheus", response.readEntity(String.class));
+            i++;
+            response = target.path("admin").request().get();
+            Assert.assertEquals(200, response.getStatus());
+            Assert.assertEquals(true, response.readEntity(boolean.class));
+        }
+        // now the nonce cache is full
+        response = target.request().get();
+        Assert.assertEquals(401, response.getStatus());
     }
 }

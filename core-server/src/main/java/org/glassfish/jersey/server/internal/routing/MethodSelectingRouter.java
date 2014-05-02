@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -65,24 +65,20 @@ import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.ext.MessageBodyReader;
 import javax.ws.rs.ext.MessageBodyWriter;
 
-import javax.inject.Inject;
-import javax.inject.Provider;
-
-import org.glassfish.jersey.internal.util.ReflectionHelper;
 import org.glassfish.jersey.message.MessageBodyWorkers;
 import org.glassfish.jersey.message.internal.MediaTypes;
 import org.glassfish.jersey.server.ContainerRequest;
 import org.glassfish.jersey.server.ContainerResponse;
 import org.glassfish.jersey.server.internal.LocalizationMessages;
-import org.glassfish.jersey.server.internal.process.RespondingContext;
+import org.glassfish.jersey.server.internal.process.RequestProcessingContext;
 import org.glassfish.jersey.server.model.Invocable;
 import org.glassfish.jersey.server.model.Parameter;
 import org.glassfish.jersey.server.model.ResourceMethod;
 
-import com.google.common.base.Function;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
-import com.google.common.primitives.Primitives;
+import jersey.repackaged.com.google.common.base.Function;
+import jersey.repackaged.com.google.common.collect.Lists;
+import jersey.repackaged.com.google.common.collect.Sets;
+import jersey.repackaged.com.google.common.primitives.Primitives;
 
 /**
  * A single router responsible for selecting a single method from all the methods
@@ -99,7 +95,6 @@ final class MethodSelectingRouter implements Router {
 
     private static final Logger LOGGER = Logger.getLogger(MethodSelectingRouter.class.getName());
 
-    private final Provider<RespondingContext> respondingContextFactory;
     private final MessageBodyWorkers workers;
 
     private final Map<String, List<ConsumesProducesAcceptor>> consumesProducesAcceptors;
@@ -109,8 +104,6 @@ final class MethodSelectingRouter implements Router {
      * Injectable builder of a {@link MethodSelectingRouter} instance.
      */
     static class Builder {
-        @Inject
-        private Provider<RespondingContext> respondingContextFactory;
 
         /**
          * Create a new {@link MethodSelectingRouter} for all the methods on the same path.
@@ -125,20 +118,25 @@ final class MethodSelectingRouter implements Router {
         public MethodSelectingRouter build(
                 final MessageBodyWorkers workers, final List<MethodAcceptorPair> methodAcceptorPairs) {
 
-            return new MethodSelectingRouter(respondingContextFactory,
-                    workers,
+            return new MethodSelectingRouter(workers,
                     methodAcceptorPairs);
         }
     }
 
-    private MethodSelectingRouter(
-            Provider<RespondingContext> respondingContextFactory,
-            MessageBodyWorkers msgWorkers,
-            List<MethodAcceptorPair> methodAcceptorPairs) {
-        this.respondingContextFactory = respondingContextFactory;
-        this.workers = msgWorkers;
+    /**
+     * Create a new {@code MethodSelectingRouter} for all the methods on the same path.
+     *
+     * The router selects the method that best matches the request based on
+     * produce/consume information from the resource method models.
+     *
+     * @param workers             message body workers.
+     * @param methodAcceptorPairs [method model, method methodAcceptorPair] pairs.
+     * @return new {@link MethodSelectingRouter}
+     */
+    MethodSelectingRouter(MessageBodyWorkers workers, List<MethodAcceptorPair> methodAcceptorPairs) {
+        this.workers = workers;
 
-        this.consumesProducesAcceptors = new HashMap<String, List<ConsumesProducesAcceptor>>();
+        this.consumesProducesAcceptors = new HashMap<>();
 
         final Set<String> httpMethods = Sets.newHashSet();
         for (final MethodAcceptorPair methodAcceptorPair : methodAcceptorPairs) {
@@ -147,7 +145,7 @@ final class MethodSelectingRouter implements Router {
 
             List<ConsumesProducesAcceptor> httpMethodBoundAcceptors = consumesProducesAcceptors.get(httpMethod);
             if (httpMethodBoundAcceptors == null) {
-                httpMethodBoundAcceptors = new LinkedList<ConsumesProducesAcceptor>();
+                httpMethodBoundAcceptors = new LinkedList<>();
                 consumesProducesAcceptors.put(httpMethod, httpMethodBoundAcceptors);
             }
 
@@ -238,9 +236,9 @@ final class MethodSelectingRouter implements Router {
      */
     private static class ConsumesProducesAcceptor {
 
-        private CombinedClientServerMediaType.EffectiveMediaType consumes;
-        private CombinedClientServerMediaType.EffectiveMediaType produces;
-        private MethodAcceptorPair methodAcceptorPair;
+        private final CombinedClientServerMediaType.EffectiveMediaType consumes;
+        private final CombinedClientServerMediaType.EffectiveMediaType produces;
+        private final MethodAcceptorPair methodAcceptorPair;
 
         private ConsumesProducesAcceptor(
                 CombinedClientServerMediaType.EffectiveMediaType consumes,
@@ -253,7 +251,7 @@ final class MethodSelectingRouter implements Router {
 
         /**
          * Returns the {@link CombinedClientServerMediaType.EffectiveMediaType extended media type} which can be
-         * consumed by {@link ResourceMethod resource method} of this {@link ConsumesProducesAcceptor router}.
+         * consumed by {@link ResourceMethod resource method} of this {@code ConsumesProducesAcceptor} router.
          *
          * @return Consumed type.
          */
@@ -263,7 +261,7 @@ final class MethodSelectingRouter implements Router {
 
         /**
          * Returns the {@link CombinedClientServerMediaType.EffectiveMediaType extended media type} which can be
-         * produced by {@link ResourceMethod resource method} of this {@link ConsumesProducesAcceptor router}.
+         * produced by {@link ResourceMethod resource method} of this {@code ConsumesProducesAcceptor} router.
          *
          * @return Produced type.
          */
@@ -273,7 +271,7 @@ final class MethodSelectingRouter implements Router {
 
 
         /**
-         * Determines whether this {@link ConsumesProducesAcceptor router} can process the {@code request}.
+         * Determines whether this {@code ConsumesProducesAcceptor} router can process the {@code request}.
          *
          * @param requestContext The request to be tested.
          * @return True if the {@code request} can be processed by this router, false otherwise.
@@ -399,7 +397,7 @@ final class MethodSelectingRouter implements Router {
 
         List<RequestSpecificConsumesProducesAcceptor> getSameFitnessList() {
             if (sameFitnessAcceptors == null) {
-                sameFitnessAcceptors = new LinkedList<RequestSpecificConsumesProducesAcceptor>();
+                sameFitnessAcceptors = new LinkedList<>();
             }
             return sameFitnessAcceptors;
         }
@@ -410,14 +408,14 @@ final class MethodSelectingRouter implements Router {
         return new Router() {
 
             @Override
-            public Continuation apply(ContainerRequest requestContext) {
+            public Continuation apply(RequestProcessingContext requestContext) {
                 return Continuation.of(requestContext, getMethodRouter(requestContext));
             }
         };
     }
 
     @Override
-    public Continuation apply(ContainerRequest requestContext) {
+    public Continuation apply(RequestProcessingContext requestContext) {
         return router.apply(requestContext);
     }
 
@@ -425,11 +423,11 @@ final class MethodSelectingRouter implements Router {
                                                     final MethodAcceptorPair methodAcceptorPair) {
         final ResourceMethod resourceMethod = methodAcceptorPair.model;
 
-        final Set<MediaType> effectiveInputTypes = new LinkedHashSet<MediaType>();
+        final Set<MediaType> effectiveInputTypes = new LinkedHashSet<>();
         boolean consumesFromWorkers = fillMediaTypes(effectiveInputTypes, resourceMethod,
                 resourceMethod.getConsumedTypes(), true);
 
-        final Set<MediaType> effectiveOutputTypes = new LinkedHashSet<MediaType>();
+        final Set<MediaType> effectiveOutputTypes = new LinkedHashSet<>();
         boolean producesFromWorkers = fillMediaTypes(effectiveOutputTypes, resourceMethod,
                 resourceMethod.getProducedTypes(), false);
 
@@ -508,17 +506,18 @@ final class MethodSelectingRouter implements Router {
         return null;
     }
 
-    private List<Router> getMethodRouter(final ContainerRequest requestContext) {
-        final List<ConsumesProducesAcceptor> acceptors = consumesProducesAcceptors.get(requestContext.getMethod());
+    private List<Router> getMethodRouter(final RequestProcessingContext context) {
+        final ContainerRequest request = context.request();
+        final List<ConsumesProducesAcceptor> acceptors = consumesProducesAcceptors.get(request.getMethod());
         if (acceptors == null) {
             throw new NotAllowedException(
                     Response.status(Status.METHOD_NOT_ALLOWED).allow(consumesProducesAcceptors.keySet()).build());
         }
 
-        final List<ConsumesProducesAcceptor> satisfyingAcceptors = new LinkedList<ConsumesProducesAcceptor>();
+        final List<ConsumesProducesAcceptor> satisfyingAcceptors = new LinkedList<>();
         final Set<ResourceMethod> differentInvokableMethods = Sets.newIdentityHashSet();
         for (ConsumesProducesAcceptor cpi : acceptors) {
-            if (cpi.isConsumable(requestContext)) {
+            if (cpi.isConsumable(request)) {
                 satisfyingAcceptors.add(cpi);
                 differentInvokableMethods.add(cpi.methodAcceptorPair.model);
             }
@@ -527,9 +526,9 @@ final class MethodSelectingRouter implements Router {
             throw new NotSupportedException();
         }
 
-        final List<MediaType> acceptableMediaTypes = requestContext.getAcceptableMediaTypes();
+        final List<MediaType> acceptableMediaTypes = request.getAcceptableMediaTypes();
 
-        final MediaType requestContentType = requestContext.getMediaType();
+        final MediaType requestContentType = request.getMediaType();
         final MediaType effectiveContentType = requestContentType == null ? MediaType.WILDCARD_TYPE : requestContentType;
 
         final MethodSelector methodSelector = selectMethod(acceptableMediaTypes, satisfyingAcceptors, effectiveContentType,
@@ -542,21 +541,21 @@ final class MethodSelectingRouter implements Router {
                 reportMethodSelectionAmbiguity(acceptableMediaTypes, methodSelector.selected, methodSelector.sameFitnessAcceptors);
             }
 
-            respondingContextFactory.get().push(new Function<ContainerResponse, ContainerResponse>() {
+            context.push(new Function<ContainerResponse, ContainerResponse>() {
                 @Override
                 public ContainerResponse apply(final ContainerResponse responseContext) {
                     // we only need to compute and set the effective media type if it hasn't been set already
                     // and either there is an entity, or we are responding to a HEAD request
                     if (responseContext.getMediaType() == null
                             && (responseContext.hasEntity()
-                                    || HttpMethod.HEAD.equals(responseContext.getRequestContext().getMethod()))) {
+                            || HttpMethod.HEAD.equals(responseContext.getRequestContext().getMethod()))) {
 
                         MediaType effectiveResponseType = determineResponseMediaType(responseContext.getEntityClass(),
                                 responseContext.getEntityType(), methodSelector.selected, acceptableMediaTypes);
 
                         if (isWildcard(effectiveResponseType)) {
                             if (effectiveResponseType.isWildcardType()
-                                    || effectiveResponseType.getType().equalsIgnoreCase("application")) {
+                                    || "application".equalsIgnoreCase(effectiveResponseType.getType())) {
                                 effectiveResponseType = MediaType.APPLICATION_OCTET_STREAM_TYPE;
                             } else {
                                 throw new NotAcceptableException();
@@ -597,8 +596,8 @@ final class MethodSelectingRouter implements Router {
         final Invocable invocable = resourceMethod.getInvocable();
 
         // Entity class can be null when considering HEAD method || empty entity.
-        final Class<?> responseEntityClass = entityClass == null ? invocable.getRawResponseType() : entityClass;
-        final Method handlingMethod = invocable.getValidateMethod();
+        final Class<?> responseEntityClass = entityClass == null ? invocable.getRawRoutingResponseType() : entityClass;
+        final Method handlingMethod = invocable.getHandlingMethod();
 
         CombinedClientServerMediaType selected = null;
 
@@ -637,11 +636,12 @@ final class MethodSelectingRouter implements Router {
                         }
                     }
                 }
-                // Found media type for current writer.
-                if (selected != null) {
-                    return selected.getCombinedMediaType();
-                }
             }
+        }
+
+        // Found media type for current writer.
+        if (selected != null) {
+            return selected.getCombinedMediaType();
         }
 
         // If the media type couldn't be determined, choose pre-selected one and wait whether interceptors change the mediaType
@@ -651,21 +651,21 @@ final class MethodSelectingRouter implements Router {
 
     private boolean isWriteable(final RequestSpecificConsumesProducesAcceptor candidate) {
         final Invocable invocable = candidate.methodAcceptorPair.model.getInvocable();
-        final Class<?> responseType = Primitives.wrap(invocable.getRawResponseType());
+        final Class<?> responseType = Primitives.wrap(invocable.getRawRoutingResponseType());
 
         if (Response.class.isAssignableFrom(responseType)
                 || Void.class.isAssignableFrom(responseType)) {
             return true;
         }
 
-        final Method handlingMethod = invocable.getValidateMethod();
-        final Type genericType = handlingMethod.getGenericReturnType();
+        final Type genericType = invocable.getRoutingResponseType();
 
         final Type genericReturnType = genericType instanceof GenericType ?
-                ReflectionHelper.getTypeArgument(genericType, 0) : genericType;
+                ((GenericType) genericType).getType() : genericType;
 
         for (final MessageBodyWriter writer : workers.getMessageBodyWritersForType(responseType)) {
-            if (writer.isWriteable(responseType, genericReturnType, handlingMethod.getDeclaredAnnotations(),
+            if (writer.isWriteable(responseType, genericReturnType,
+                    invocable.getHandlingMethod().getDeclaredAnnotations(),
                     candidate.produces.getCombinedMediaType())) {
                 return true;
             }
@@ -676,7 +676,7 @@ final class MethodSelectingRouter implements Router {
 
     private boolean isReadable(final RequestSpecificConsumesProducesAcceptor candidate) {
         final Invocable invocable = candidate.methodAcceptorPair.model.getInvocable();
-        final Method handlingMethod = invocable.getValidateMethod();
+        final Method handlingMethod = invocable.getHandlingMethod();
         final Parameter entityParam = getEntityParam(invocable);
 
         if (entityParam == null) {
@@ -685,8 +685,9 @@ final class MethodSelectingRouter implements Router {
             final Class<?> entityType = entityParam.getRawType();
 
             for (final MessageBodyReader reader : workers.getMessageBodyReadersForType(entityType)) {
-                if (reader.isReadable(entityType, handlingMethod.getGenericReturnType(), handlingMethod.getDeclaredAnnotations
-                        (), candidate.consumes.getCombinedMediaType())) {
+                if (reader.isReadable(entityType, entityParam.getType(),
+                        handlingMethod.getDeclaredAnnotations
+                                (), candidate.consumes.getCombinedMediaType())) {
                     return true;
                 }
             }
@@ -796,10 +797,11 @@ final class MethodSelectingRouter implements Router {
         return new Router() {
 
             @Override
-            public Continuation apply(final ContainerRequest requestContext) {
-                if (HttpMethod.HEAD.equals(requestContext.getMethod())) {
-                    requestContext.setMethodWithoutException(HttpMethod.GET);
-                    respondingContextFactory.get().push(
+            public Continuation apply(final RequestProcessingContext context) {
+                final ContainerRequest request = context.request();
+                if (HttpMethod.HEAD.equals(request.getMethod())) {
+                    request.setMethodWithoutException(HttpMethod.GET);
+                    context.push(
                             new Function<ContainerResponse, ContainerResponse>() {
                                 @Override
                                 public ContainerResponse apply(ContainerResponse responseContext) {
@@ -809,7 +811,7 @@ final class MethodSelectingRouter implements Router {
                             }
                     );
                 }
-                return Continuation.of(requestContext, getMethodRouter(requestContext));
+                return Continuation.of(context, getMethodRouter(context));
             }
         };
     }

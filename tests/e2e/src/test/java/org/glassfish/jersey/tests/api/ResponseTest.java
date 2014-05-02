@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -55,10 +55,8 @@ import javax.ws.rs.core.NewCookie;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Variant;
 
-import javax.annotation.Nullable;
-
 import org.glassfish.jersey.internal.util.PropertiesHelper;
-import org.glassfish.jersey.message.internal.HeadersFactory;
+import org.glassfish.jersey.message.internal.HeaderUtils;
 
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
@@ -78,7 +76,6 @@ public class ResponseTest {
     @Test
     public void OkTest5() {
         boolean pass = true;
-
         Response resp;
         int status = 200;
         String content = "Test Only";
@@ -297,7 +294,7 @@ public class ResponseTest {
             pass = false;
         }
 
-        MultivaluedMap<String, String> mvp = HeadersFactory.asStringHeaders(
+        MultivaluedMap<String, String> mvp = HeaderUtils.asStringHeaders(
                 resp.getMetadata());
 
 
@@ -393,8 +390,7 @@ public class ResponseTest {
         return sb.toString();
     }
 
-    private String verifyResponse(Response resp, String content, int status,
-                                  @Nullable HashMap<String, String> expected_map) {
+    private String verifyResponse(Response resp, String content, int status, HashMap<String, String> expected_map) {
         boolean pass = true;
         StringBuilder sb = new StringBuilder();
 

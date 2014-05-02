@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -70,12 +70,11 @@ import javax.ws.rs.ext.WriterInterceptor;
 import javax.ws.rs.ext.WriterInterceptorContext;
 import static javax.ws.rs.client.Entity.text;
 
-import javax.annotation.Nullable;
 import javax.xml.bind.annotation.XmlRootElement;
 
 import org.glassfish.jersey.client.ClientConfig;
 import org.glassfish.jersey.server.ResourceConfig;
-import org.glassfish.jersey.spi.RequestExecutorsProvider;
+import org.glassfish.jersey.spi.RequestExecutorProvider;
 import org.glassfish.jersey.test.JerseyTest;
 
 import org.junit.Test;
@@ -84,10 +83,10 @@ import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-import com.google.common.base.Function;
-import com.google.common.collect.Collections2;
-import com.google.common.util.concurrent.AbstractFuture;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import jersey.repackaged.com.google.common.base.Function;
+import jersey.repackaged.com.google.common.collect.Collections2;
+import jersey.repackaged.com.google.common.util.concurrent.AbstractFuture;
+import jersey.repackaged.com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 /**
  * Tests sync and async client invocations.
@@ -106,8 +105,7 @@ public class BasicClientTest extends JerseyTest {
     @Test
     public void testCustomExecutorsAsync() throws ExecutionException, InterruptedException {
         ClientConfig jerseyConfig = new ClientConfig();
-        jerseyConfig.register
-                (CustomExecutorProvider.class).register(ThreadInterceptor.class);
+        jerseyConfig.register(CustomExecutorProvider.class).register(ThreadInterceptor.class);
         Client client = ClientBuilder.newClient(jerseyConfig);
         runCustomExecutorTestAsync(client);
     }
@@ -115,8 +113,7 @@ public class BasicClientTest extends JerseyTest {
     @Test
     public void testCustomExecutorsInstanceAsync() throws ExecutionException, InterruptedException {
         ClientConfig jerseyConfig = new ClientConfig();
-        jerseyConfig.register
-                (new CustomExecutorProvider()).register(ThreadInterceptor.class);
+        jerseyConfig.register(new CustomExecutorProvider()).register(ThreadInterceptor.class);
         Client client = ClientBuilder.newClient(jerseyConfig);
         runCustomExecutorTestAsync(client);
     }
@@ -125,8 +122,7 @@ public class BasicClientTest extends JerseyTest {
     @Test
     public void testCustomExecutorsSync() throws ExecutionException, InterruptedException {
         ClientConfig jerseyConfig = new ClientConfig();
-        jerseyConfig.register
-                (CustomExecutorProvider.class).register(ThreadInterceptor.class);
+        jerseyConfig.register(CustomExecutorProvider.class).register(ThreadInterceptor.class);
         Client client = ClientBuilder.newClient(jerseyConfig);
         runCustomExecutorTestSync(client);
     }
@@ -135,8 +131,7 @@ public class BasicClientTest extends JerseyTest {
     @Test
     public void testCustomExecutorsInstanceSync() throws ExecutionException, InterruptedException {
         ClientConfig jerseyConfig = new ClientConfig();
-        jerseyConfig.register
-                (new CustomExecutorProvider()).register(ThreadInterceptor.class);
+        jerseyConfig.register(new CustomExecutorProvider()).register(ThreadInterceptor.class);
         Client client = ClientBuilder.newClient(jerseyConfig);
         runCustomExecutorTestSync(client);
     }
@@ -175,7 +170,7 @@ public class BasicClientTest extends JerseyTest {
                 Arrays.asList("a", "b", "c").toString(),
                 Collections2.transform(f3.get(), new Function<JaxbString, String>() {
                     @Override
-                    public String apply(@Nullable JaxbString input) {
+                    public String apply(JaxbString input) {
                         return input.value;
                     }
                 }).toString());
@@ -206,7 +201,7 @@ public class BasicClientTest extends JerseyTest {
             protected String process(List<JaxbString> result) {
                 return Collections2.transform(result, new Function<JaxbString, String>() {
                     @Override
-                    public String apply(@Nullable JaxbString input) {
+                    public String apply(JaxbString input) {
                         return input.value;
                     }
                 }).toString();
@@ -286,7 +281,7 @@ public class BasicClientTest extends JerseyTest {
             protected String process(List<JaxbString> result) {
                 return Collections2.transform(result, new Function<JaxbString, String>() {
                     @Override
-                    public String apply(@Nullable JaxbString input) {
+                    public String apply(JaxbString input) {
                         return input.value;
                     }
                 }).toString();
@@ -321,7 +316,7 @@ public class BasicClientTest extends JerseyTest {
                 Arrays.asList("a", "b", "c").toString(),
                 Collections2.transform(r3, new Function<JaxbString, String>() {
                     @Override
-                    public String apply(@Nullable JaxbString input) {
+                    public String apply(JaxbString input) {
                         return input.value;
                     }
                 }).toString());
@@ -383,11 +378,16 @@ public class BasicClientTest extends JerseyTest {
         return client.target("http://any.web:888");
     }
 
-    public static class CustomExecutorProvider implements RequestExecutorsProvider {
+    public static class CustomExecutorProvider implements RequestExecutorProvider {
 
         @Override
         public ExecutorService getRequestingExecutor() {
             return Executors.newSingleThreadExecutor(new ThreadFactoryBuilder().setNameFormat("AsyncRequest").build());
+        }
+
+        @Override
+        public void releaseRequestingExecutor(ExecutorService executor) {
+            executor.shutdownNow();
         }
     }
 

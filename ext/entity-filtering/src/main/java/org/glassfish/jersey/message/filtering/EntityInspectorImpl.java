@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -62,8 +62,8 @@ import org.glassfish.jersey.model.internal.RankedComparator;
 
 import org.glassfish.hk2.api.ServiceLocator;
 
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
+import jersey.repackaged.com.google.common.collect.Lists;
+import jersey.repackaged.com.google.common.collect.Sets;
 
 /**
  * Class responsible for inspecting entity classes. This class invokes all available {@link EntityProcessor entity processors} in
@@ -149,7 +149,7 @@ final class EntityInspectorImpl implements EntityInspector {
      */
     private Map<String, Method> inspectEntityProperties(final Class<?> entityClass, final EntityGraph graph,
                                                         final Set<Class<?>> inspect, final boolean forWriter) {
-        final Field[] fields = AccessController.doPrivileged(ReflectionHelper.getDeclaredFieldsPA(entityClass));
+        final Field[] fields = AccessController.doPrivileged(ReflectionHelper.getAllFieldsPA(entityClass));
         final Map<String, Method> methods = FilteringHelper.getPropertyMethods(entityClass, forWriter);
 
         for (final Field field : fields) {

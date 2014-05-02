@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -59,8 +59,10 @@ import org.glassfish.hk2.api.Context;
 import org.glassfish.hk2.api.ServiceHandle;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 
-import com.google.common.base.Objects;
-import static com.google.common.base.Preconditions.checkState;
+import jersey.repackaged.com.google.common.base.Objects;
+import jersey.repackaged.com.google.common.collect.Sets;
+
+import static jersey.repackaged.com.google.common.base.Preconditions.checkState;
 
 /**
  * Scopes a single request/response processing execution on a single thread.
@@ -294,8 +296,8 @@ public class RequestScope implements Context<RequestScoped> {
             currentScopeInstance.set(scopeInstance.getReference());
             Errors.process(task);
         } finally {
-            currentScopeInstance.set(oldInstance);
             scopeInstance.release();
+            currentScopeInstance.set(oldInstance);
         }
     }
 
@@ -317,8 +319,8 @@ public class RequestScope implements Context<RequestScoped> {
             currentScopeInstance.set(instance);
             Errors.process(task);
         } finally {
-            currentScopeInstance.set(oldInstance);
             instance.release();
+            currentScopeInstance.set(oldInstance);
         }
     }
 
@@ -344,8 +346,8 @@ public class RequestScope implements Context<RequestScoped> {
             currentScopeInstance.set(scopeInstance.getReference());
             return Errors.process(task);
         } finally {
-            currentScopeInstance.set(oldInstance);
             scopeInstance.release();
+            currentScopeInstance.set(oldInstance);
         }
     }
 
@@ -370,8 +372,8 @@ public class RequestScope implements Context<RequestScoped> {
             currentScopeInstance.set(instance);
             return Errors.process(task);
         } finally {
-            currentScopeInstance.set(oldInstance);
             instance.release();
+            currentScopeInstance.set(oldInstance);
         }
     }
 
@@ -396,8 +398,8 @@ public class RequestScope implements Context<RequestScoped> {
             currentScopeInstance.set(scopeInstance.getReference());
             return Errors.process(task);
         } finally {
-            currentScopeInstance.set(oldInstance);
             scopeInstance.release();
+            currentScopeInstance.set(oldInstance);
         }
     }
 
@@ -421,8 +423,8 @@ public class RequestScope implements Context<RequestScoped> {
             currentScopeInstance.set(instance);
             return Errors.process(task);
         } finally {
-            currentScopeInstance.set(oldInstance);
             instance.release();
+            currentScopeInstance.set(oldInstance);
         }
     }
 
@@ -503,8 +505,12 @@ public class RequestScope implements Context<RequestScoped> {
          *
          * @param descriptor key for the value to be removed.
          */
-        void remove(ActiveDescriptor<?> descriptor) {
-            store.remove(descriptor);
+        @SuppressWarnings("unchecked")
+        <T> void remove(ActiveDescriptor<T> descriptor) {
+            final T removed = (T) store.remove(descriptor);
+            if (removed != null) {
+                descriptor.dispose(removed);
+            }
         }
 
         private <T> boolean contains(ActiveDescriptor<T> provider) {
@@ -519,7 +525,9 @@ public class RequestScope implements Context<RequestScoped> {
         public void release() {
             if (referenceCounter.decrementAndGet() < 1) {
                 try {
-                    store.clear();
+                    for (final ActiveDescriptor<?> descriptor : Sets.newHashSet(store.keySet())) {
+                        remove(descriptor);
+                    }
                 } finally {
                     logger.debugLog("Released scope instance {0}", this);
                 }

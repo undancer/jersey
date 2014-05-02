@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -45,17 +45,20 @@ import java.util.Map;
 import java.util.Set;
 
 import org.glassfish.jersey.server.ResourceConfig;
+import org.glassfish.jersey.server.internal.LocalizationMessages;
 import org.glassfish.jersey.server.monitoring.ApplicationMXBean;
 import org.glassfish.jersey.server.monitoring.ApplicationStatistics;
 
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
+import jersey.repackaged.com.google.common.collect.Maps;
+import jersey.repackaged.com.google.common.collect.Sets;
 
 /**
- * MXBean implementing {@link org.glassfish.jersey.server.monitoring.ApplicationMXBean} MXbean interface.
+ * MXBean implementing {@link org.glassfish.jersey.server.monitoring.ApplicationMXBean} MXBean interface.
+ *
  * @author Miroslav Fuksa (miroslav.fuksa at oracle.com)
  */
 public class ApplicationMXBeanImpl implements ApplicationMXBean {
+
     private final String applicationName;
     private final String applicationClass;
     private final Map<String, String> configurationProperties;
@@ -66,25 +69,26 @@ public class ApplicationMXBeanImpl implements ApplicationMXBean {
 
     /**
      * Create a new application MXBean and register it to the mbean server using {@code mBeanExposer}.
+     *
      * @param applicationStatistics Application statistics which should be exposed.
      * @param mBeanExposer MBean exposer.
      * @param parentName {@link javax.management.ObjectName Object name} prefix of parent mbeans.
      */
-    public ApplicationMXBeanImpl(ApplicationStatistics applicationStatistics,
-                                 MBeanExposer mBeanExposer, String parentName) {
+    public ApplicationMXBeanImpl(final ApplicationStatistics applicationStatistics, final MBeanExposer mBeanExposer,
+                                 final String parentName) {
         this.providers = Sets.newHashSet();
         this.registeredClasses = Sets.newHashSet();
         this.registeredInstances = Sets.newHashSet();
 
-        for (Class<?> provider : applicationStatistics.getProviders()) {
+        for (final Class<?> provider : applicationStatistics.getProviders()) {
             this.providers.add(provider.getName());
         }
 
-        for (Class<?> registeredClass : applicationStatistics.getRegisteredClasses()) {
+        for (final Class<?> registeredClass : applicationStatistics.getRegisteredClasses()) {
             this.registeredClasses.add(registeredClass.toString());
         }
 
-        for (Object registeredInstance : applicationStatistics.getRegisteredInstances()) {
+        for (final Object registeredInstance : applicationStatistics.getRegisteredInstances()) {
             this.registeredInstances.add(registeredInstance.getClass().getName());
         }
 
@@ -92,10 +96,18 @@ public class ApplicationMXBeanImpl implements ApplicationMXBean {
         this.applicationName = resourceConfig.getApplicationName();
         this.applicationClass = resourceConfig.getApplication().getClass().getName();
         this.configurationProperties = Maps.newHashMap();
-        for (Map.Entry<String, Object> entry : resourceConfig.getProperties().entrySet()) {
-            configurationProperties.put(entry.getKey(), entry.getValue().toString());
+        for (final Map.Entry<String, Object> entry : resourceConfig.getProperties().entrySet()) {
+            final Object value = entry.getValue();
+            String stringValue;
+            try {
+                stringValue = (value == null) ? "[null]" : value.toString();
+            } catch (final Exception e) { // See JERSEY-2053: Sometimes toString() throws exception...
+                stringValue = LocalizationMessages.PROPERTY_VALUE_TOSTRING_THROWS_EXCEPTION(
+                        e.getClass().getName(), e.getMessage());
+            }
+            configurationProperties.put(entry.getKey(), stringValue);
         }
-        this.startTime = applicationStatistics.getStartTime();
+        this.startTime = new Date(applicationStatistics.getStartTime().getTime());
 
         mBeanExposer.registerMBean(this, parentName + ",global=Configuration");
     }

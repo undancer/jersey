@@ -44,7 +44,6 @@ import javax.inject.Singleton;
 
 import org.glassfish.jersey.server.monitoring.ApplicationEvent;
 import org.glassfish.jersey.server.monitoring.ApplicationEventListener;
-import org.glassfish.jersey.server.spi.AbstractContainerLifecycleListener;
 import org.glassfish.jersey.server.spi.Container;
 import org.glassfish.jersey.server.spi.ContainerLifecycleListener;
 
@@ -58,7 +57,7 @@ import org.glassfish.hk2.utilities.binding.AbstractBinder;
  *
  * @author Miroslav Fuksa (miroslav.fuksa at oracle.com)
  */
-public class MonitoringContainerListener extends AbstractContainerLifecycleListener {
+public class MonitoringContainerListener implements ContainerLifecycleListener {
 
     private volatile ApplicationEvent initFinishedEvent;
     private volatile ApplicationEventListener listener;
@@ -77,13 +76,20 @@ public class MonitoringContainerListener extends AbstractContainerLifecycleListe
     }
 
     @Override
+    public void onStartup(Container container) {
+        if (listener != null) {
+            listener.onEvent(getApplicationEvent(ApplicationEvent.Type.INITIALIZATION_FINISHED));
+        }
+    }
+
+    @Override
     public void onReload(Container container) {
         if (listener != null) {
             listener.onEvent(getApplicationEvent(ApplicationEvent.Type.RELOAD_FINISHED));
         }
     }
 
-    private ApplicationEventImpl getApplicationEvent(ApplicationEvent.Type type) {
+    private ApplicationEvent getApplicationEvent(ApplicationEvent.Type type) {
         return new ApplicationEventImpl(type,
                 initFinishedEvent.getResourceConfig(), initFinishedEvent.getProviders(),
                 initFinishedEvent.getRegisteredClasses(), initFinishedEvent.getRegisteredInstances(),
@@ -93,7 +99,6 @@ public class MonitoringContainerListener extends AbstractContainerLifecycleListe
     @Override
     public void onShutdown(Container container) {
         if (listener != null) {
-
             listener.onEvent(getApplicationEvent(ApplicationEvent.Type.DESTROY_FINISHED));
         }
     }
@@ -104,7 +109,7 @@ public class MonitoringContainerListener extends AbstractContainerLifecycleListe
     public static class Binder extends AbstractBinder {
         @Override
         protected void configure() {
-            bind(MonitoringContainerListener.class).to(MonitoringContainerListener.class)
+            bindAsContract(MonitoringContainerListener.class)
                     .to(ContainerLifecycleListener.class).in(Singleton.class);
         }
     }

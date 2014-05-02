@@ -3,7 +3,7 @@
 
     DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
 
-    Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+    Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
 
     The contents of this file are subject to the terms of either the GNU
     General Public License Version 2 only ("GPL") or the Common Development
@@ -95,7 +95,7 @@
         As an extension to the standard JAX-RS Client API, the  Jersey Client API supports a pluggable architecture to enable the
         use of different underlying HTTP client &jersey.client.Connector; implementations. Several such implementations are
         currently provided with Jersey. We have a default client connector using <literal>Http(s)URLConnection</literal> supplied
-        with the JDK as well as connector implementations based on Apache HTTP Client, and Grizzly Asynchronous Client.
+        with the JDK as well as connector implementations based on Apache HTTP Client, Jetty HTTP client and Grizzly Asynchronous Client.
     </para>
 
     <section>
@@ -448,7 +448,7 @@ invocationBuilder.header("some-header", "true");</programlisting>
                 request properties which are properties in a batch of several requests and use the generic JAX-RS
                 &lit.jaxrs.client.Invocation; API to invoke the batch of requests without actually knowing all the details
                 (such as request HTTP method, configuration etc.). Any properties set on an invocation instance can be read
-                during the request processing. For example, in a custom &jaxrs.client.RequestFilter; you can call
+                during the request processing. For example, in a custom &jaxrs.client.ClientRequestFilter; you can call
                 <literal>getProperty()</literal> method on the supplied &jaxrs.client.ClientRequestContext; to read a request
                 property. Note that these request properties are different from the configuration properties set on
                 &lit.jaxrs.core.Configurable;. As mentioned earlier, an &lit.jaxrs.client.Invocation; instance provides generic
@@ -619,28 +619,102 @@ webTarget.request().post(Entity.entity(f, MediaType.TEXT_PLAIN_TYPE));
 
         <para>
             By default, the transport layer in Jersey is provided by &lit.jdk6.HttpUrlConnection;. This transport is implemented
-            in Jersey via &jersey.client.HttpUrlConnector; that implements Jersey-specific &jersey.client.Connector; SPI.
+            in Jersey via &jersey.client.HttpUrlConnectorProvider; that implements Jersey-specific &jersey.client.Connector; SPI.
             You can implement and/or register your own &lit.jersey.client.Connector; instance to the Jersey
             &lit.jaxrs.client.Client; implementation, that will replace the default &lit.jdk6.HttpUrlConnection;-based
             transport layer. Jersey provides several alternative client transport connector implementations that are ready-to-use.
-            You can use &jersey.apache.ApacheConnector; (add a maven dependency to
+            You can use &jersey.apache.ApacheConnectorProvider; (add a maven dependency to
             <literal>org.glassfish.jersey.connectors:jersey-apache-connector</literal>)
-            or &jersey.grizzly.GrizzlyConnector; (add a maven dependency to
-            <literal>org.glassfish.jersey.connectors:jersey-grizzly-connector</literal>) alternatively. Please, note again, that
-            the &jersey.client.Connector; SPI is not a feature of JAX-RS but is a Jersey-specific extension API that will only
-            work with Jersey. Following example shows how to setup the custom &lit.jersey.client.Connector; to the Jersey client.
+            or &jersey.grizzly.GrizzlyConnectorProvider; (add a maven dependency to
+            <literal>org.glassfish.jersey.connectors:jersey-grizzly-connector</literal>)
+            or &jersey.jetty.JettyConnectorProvider; (add a maven dependency to
+            <literal>org.glassfish.jersey.connectors:jersey-jetty-connector</literal>) alternatively.
+            <warning xml:id="connectors.warning" xreflabel="Header modification issue">
+                <para>
+                    Be aware of using other than default &lit.jersey.client.Connector; implementation.
+                    There is an issue handling HTTP headers in
+                    &lit.jaxrs.WriterInterceptor; or &lit.jaxrs.ext.MessageBodyWriter;.
+                    If you need to change header fields do not use nor
+                    &lit.jersey.apache.ApacheConnectorProvider; nor &lit.jersey.grizzly.GrizzlyConnectorProvider;
+                    neither &lit.jersey.jetty.JettyConnectorProvider;.
+                    The issue for example applies to Jersey <xref linkend="multipart" endterm="multipart.short"/>
+                    feature that also modifies HTTP headers.
+                </para>
+                <para>
+                    On the other hand, in the default transport connector, there are some restrictions on the headers, that
+                    can be sent in the default configuration.
+                    <literal>HttpUrlConnectorProvider</literal> uses &lit.jdk6.HttpUrlConnection; as an underlying connection
+                    implementation. This JDK class by default restricts the use of following headers:
+                    <itemizedlist>
+                        <listitem>&lit.http.header.AccessControlRequestHeaders;</listitem>
+                        <listitem>&lit.http.header.AccessControlRequestMethod;</listitem>
+                        <listitem>&lit.http.header.Connection; (with one exception - &lit.http.header.Connection; header with
+                            value <literal>Closed</literal> is allowed by default)</listitem>
+                        <listitem>&lit.http.header.ContentLength;</listitem>
+                        <listitem>&lit.http.header.ContentTransferEncoding;</listitem>
+                        <listitem>&lit.http.header.Host;</listitem>
+                        <listitem>&lit.http.header.Keep-Alive;</listitem>
+                        <listitem>&lit.http.header.Origin;</listitem>
+                        <listitem>&lit.http.header.Trailer;</listitem>
+                        <listitem>&lit.http.header.Transfer-Encoding;</listitem>
+                        <listitem>&lit.http.header.Upgrade;</listitem>
+                        <listitem>&lit.http.header.Via;</listitem>
+                        <listitem>all the headers starting with &lit.http.header.Sec-prefix;</listitem>
+                    </itemizedlist>
+                    The underlying connection can be configured to permit all headers to be sent,
+                    however this behaviour can be changed only by setting the system property
+                    <literal>sun.net.http.allowRestrictedHeaders</literal>.
+                    <example>
+                        <title>Sending restricted headers with <literal>HttpUrlConnector</literal></title>
+                        <programlisting language="java" linenumbering="numbered">
+                            Client client = ClientBuilder.newClient();
+                            System.setProperty("sun.net.http.allowRestrictedHeaders", "true");
+
+                            Response response = client.target(yourUri).path(yourPath).request().
+                            header("Origin", "http://example.com").
+                            header("Access-Control-Request-Method", "POST").
+                            get();
+                        </programlisting>
+                    </example>
+                </para>
+                <para>
+                    Note, that internally the &lit.jdk6.HttpUrlConnection; instances are pooled, so (un)setting the
+                    property after already creating a target typically does not have any effect.
+                    The property influences all the connections <emphasis>created</emphasis> after the property has been
+                    (un)set, but there is no guarantee, that your request will use a connection
+                    created after the property change.
+                </para>
+                <para>
+                    In a simple environment, setting the property before creating the first target is sufficient, but in complex
+                    environments (such as application servers), where some poolable connections might exist before your
+                    application even bootstraps, this approach is not 100% reliable and we recommend using a different client
+                    transport connector, such as Apache Connector.
+                    These limitations have to be considered especially when invoking <emphasis>CORS</emphasis> (Cross Origin
+                    Resource Sharing) requests.
+                </para>
+            </warning>
+        </para>
+        <para>
+            As indicated earlier, &jersey.client.Connector; and &jersey.client.ConnectorProvider; contracts are Jersey-specific
+            extension APIs that would only work with Jersey and as such are not part of JAX-RS. Following example shows how to
+            setup the custom Grizzly Asynchronous HTTP Client based &lit.jersey.client.ConnectorProvider; in a Jersey client
+            instance:
 
             <programlisting language="java" linenumbering="numbered">ClientConfig clientConfig = new ClientConfig();
-Connector connector = new GrizzlyConnector(clientConfig);
-clientConfig.connector(connector);
+clientConfig.connectorProvider(new GrizzlyConnectorProvider());
 Client client = ClientBuilder.newClient(clientConfig);</programlisting>
 
             &lit.jaxrs.client.Client; accepts as as a constructor argument a &lit.jaxrs.core.Configurable; instance. Jersey
             implementation of the &lit.jaxrs.core.Configurable; provider for the client is &lit.jersey.client.ClientConfig;.
-            By using the Jersey &lit.jersey.client.ClientConfig; you can configure the custom &lit.jersey.client.Connector;
-            into the &lit.jersey.client.ClientConfig;. The &lit.jersey.grizzly.GrizzlyConnector; is used as a custom connector
-            in the example above. Please note that the connector cannot be registered as a provider
-            using &lit.jaxrs.core.Configurable;<literal>.register(...)</literal> at the moment.
+            By using the Jersey &lit.jersey.client.ClientConfig; you can configure the custom
+            &lit.jersey.client.ConnectorProvider;
+            into the &lit.jersey.client.ClientConfig;. The &lit.jersey.grizzly.GrizzlyConnectorProvider; is used as a custom
+            connector provider in the example above. Please note that the connector provider cannot be registered as a provider
+            using &lit.jaxrs.core.Configurable;<literal>.register(...)</literal>. Also, please note that in this API has changed
+            in Jersey 2.5, where the &lit.jersey.client.ConnectorProvider; SPI has been introduced in order to decouple client
+            initialization from the connector instantiation. Starting with Jersey 2.5 it is therefore not possible to directly
+            register &lit.jersey.client.Connector; instances in the Jersey &jersey.client.ClientConfig;. The new
+            &lit.jersey.client.ConnectorProvider; SPI must be used instead to configure a custom client-side transport connector.
         </para>
     </section>
 
@@ -653,7 +727,8 @@ Client client = ClientBuilder.newClient(clientConfig);</programlisting>
             Filters can read/modify the request URI, headers and entity or read/modify the response status, headers and entity.
         </para>
         <para>
-            Jersey contains the following useful client-side filters that you may want to use in your applications:
+            Jersey contains the following useful client-side filters (and features registering filters)
+            that you may want to use in your applications:
 
             <simplelist>
                 <member>&jersey.client.CsrfProtectionFilter;: Cross-site request forgery protection filter (adds
@@ -662,9 +737,9 @@ Client client = ClientBuilder.newClient(clientConfig);</programlisting>
                     &jersey.client.ContentEncoder;s to encode and decode the communication. The encoding/decoding is performed
                     in interceptor (you don't need to register this interceptor). Check the javadoc of the
                     &jersey.client.EncodingFeature; in order to use it.</member>
-                <member>&jersey.client.HttpBasicAuthFilter;: HTTP Basic Authentication filter (see <xref linkend="ssl" />
+                <member>&jersey.client.HttpAuthenticationFeature;: HTTP Authentication Feature
+                    (see <xref linkend="ssl" />
                     below).</member>
-                <member>&jersey.client.HttpDigestAuthFilter;: HTTP Digest Authentication filter.</member>
             </simplelist>
 
             Note that these features are provided by Jersey, but since they use and implement JAX-RS API, the features should
@@ -695,6 +770,50 @@ System.out.println("Now the connection is closed.");</programlisting>
             (by <literal>response.readEntity(InputStream.class)</literal>), the connection stays open until
             you finish reading from the &lit.jdk6.InputStream;. In that case, the InputStream
             or the Response should be closed manually at the end of reading from InputStream.
+        </para>
+    </section>
+
+    <section>
+        <title>Injections into client providers</title>
+
+        <para>
+            In some cases you might need to inject some custom types into your client provider instance. JAX-RS
+            types do not need to be injected as they are passed as arguments into API methods.
+            Injections into client providers (filters, interceptor) are possible as long as the provider is
+            registered as a class. If the provider is registered as an instance then runtime will not inject
+            the provider. The reason is that this provider instance might be registered into multiple client
+            configurations. For example one instance of &jaxrs.client.ClientRequestFilter; can be registered
+            to two &jaxrs.client.Client;s.
+        </para>
+        <para>
+            To solve injection of a custom type into a client provider instance
+            use &jersey.client.ServiceLocatorClientProvider; to
+            extract &hk2.ServiceLocator; which can return the required injection. The following example shows how to utilize
+            &lit.jersey.client.ServiceLocatorClientProvider;:
+        </para>
+        <example>
+            <title>ServiceLocatorClientProvider example</title>
+            <programlisting language="java" linenumbering="numbered">public static class MyRequestFilter implements ClientRequestFilter {
+    // this injection does not work as filter is registered as an instance:
+    // @Inject
+    // private MyInjectedService service;
+
+    @Override
+    public void filter(ClientRequestContext requestContext) throws IOException {
+        // use ServiceLocatorClientProvider to extract HK2 ServiceLocator from request
+        final ServiceLocator locator = ServiceLocatorClientProvider.getServiceLocator(requestContext);
+
+        // and ask for MyInjectedService:
+        final MyInjectedService service = locator.getService(MyInjectedService.class);
+
+        final String name = service.getName();
+        ...
+    }
+}</programlisting>
+        </example>
+        <para>
+            For more information see javadoc of &jersey.client.ServiceLocatorClientProvider;
+            (and javadoc of &jersey.common.ServiceLocatorProvider; which supports common JAX-RS components).
         </para>
     </section>
 
@@ -745,31 +864,90 @@ Client client = ClientBuilder.newBuilder().sslContext(sslContext).build();</prog
         </important>
 
         <para>
-            Currently the default connector &lit.jersey.client.HttpUrlConnector; based on &lit.jdk6.HttpUrlConnection; implements
-            support for SSL defined by JAX-RS configuration discussed in this sample.
+            Currently the default connector provider &jersey.client.HttpUrlConnectorProvider; provides connectors based on
+            &lit.jdk6.HttpUrlConnection; which implement support for SSL defined by JAX-RS configuration discussed in this
+            example.
         </para>
 
         <section>
-            <title>HTTP Basic Authentication Support</title>
-            <para>
-                Jersey contains a filter that allows client to authenticate to servers which requires HTTP Basic Authentication.
-                Use &jersey.client.HttpBasicAuthFilter; to add authentication header to requests initiated from from the client.
-                See the example of how to configure and register the filter:
-                <programlisting linenumbering="numbered"
-                            language="java">client.register(new HttpBasicAuthFilter("Homer", "SecretPassword"));</programlisting>
-            </para>
-        </section>
+            <title>Http Authentication Support</title>
+            <para>Jersey supports Basic and Digest HTTP Authentication.</para>
+            <important>
+                <para>
+                    In version prior to Jersey 2.5 the support was
+                    provided by <literal>org.glassfish.jersey.client.filter.HttpBasicAuthFilter</literal>
+                    and <literal>org.glassfish.jersey.client.filter.HttpDigestAuthFilter</literal>. Since Jersey
+                    2.5 these filters are deprecated (and removed in 2.6) and both authentication methods
+                    are provided by single &lit.jaxrs.core.Feature;
+                    &jersey.client.HttpAuthenticationFeature;.
+                </para>
+            </important>
 
-        <section>
-            <title>HTTP Digest Authentication Support</title>
             <para>
-                Jersey contains a filter that allows client to authenticate to servers which requires HTTP Digest Authentication.
-                Use &jersey.client.HttpDigestAuthFilter; to add authentication header to requests initiated from from the client.
-                See the example of how to configure and register the filter:
-                <programlisting linenumbering="numbered"
-                            language="java">client.register(new HttpDigestAuthFilter("Homer", "SecretPassword"));</programlisting>
+                In order to enable http authentication support in Jersey client register
+                the &jersey.client.HttpAuthenticationFeature;. This feature can provide both authentication methods, digest
+                and basic. Feature can work in the following modes:
             </para>
-        </section>
+            <itemizedlist>
+                <listitem>
+                    <para>
+                        <emphasis>BASIC:</emphasis> Basic preemptive authentication. In preemptive mode the authentication information
+                          is send always with each HTTP request. This mode is more usual than the following non-preemptive mode
+                          (if you require BASIC authentication you will probably use this preemptive mode). This mode must
+                          be combined with usage of SSL/TLS as the password is send only BASE64 encoded.
+                    </para>
+                </listitem>
+                <listitem>
+                    <para>
+                        <emphasis>BASIC NON-PREEMPTIVE:</emphasis>Basic non-preemptive authentication. In non-preemptive mode the
+                          authentication information is added only when server refuses the request with <literal>401</literal> status code and
+                          then the request is repeated with authentication information. This mode has negative impact on the performance.
+                          The advantage is that it does not send credentials when they are not needed. This mode must
+                          be combined with usage of SSL/TLS as the password is send only BASE64 encoded.
+                    </para>
+                </listitem>
+                <listitem>
+                    <para>
+                        <emphasis>DIGEST:</emphasis> Http digest authentication. Does not require usage of SSL/TLS.
+                    </para>
+                </listitem>
+                <listitem>
+                    <para>
+                        <emphasis>UNIVERSAL:</emphasis> Combination of basic and digest authentication. The feature works in non-preemptive
+                          mode which means that it sends requests without authentication information. If <literal>401</literal> status
+                          code is returned, the request is repeated and an appropriate authentication is used based on the
+                          authentication requested in the response (defined in <literal>WWW-Authenticate</literal> HTTP header. The feature
+                          remembers which authentication requests were successful for given URI and next time tries to preemptively
+                          authenticate against this URI with latest successful authentication method.
+                    </para>
+                </listitem>
+            </itemizedlist>
+
+
+            <para>
+                To initialize the feature use static methods and builder of this feature. Example of building the feature in
+                 Basic authentication mode:
+                <programlisting language="java" linenumbering="numbered">HttpAuthenticationFeature feature = HttpAuthenticationFeature.basic("user", "superSecretPassword");</programlisting>
+            </para>
+            <para>
+                Example of building the feature in basic non-preemptive mode:
+                <programlisting language="java" linenumbering="numbered">HttpAuthenticationFeature feature = HttpAuthenticationFeature.basicBuilder()
+    .nonPreemptive().credentials("user", "superSecretPassword").build();</programlisting>
+            </para>
+            <para>
+                You can also build the feature without any default credentials:
+                <programlisting language="java" linenumbering="numbered">HttpAuthenticationFeature feature = HttpAuthenticationFeature.basicBuilder().build();</programlisting>
+                In this case you need to supply username and password for each request using request properties:
+                <programlisting language="java" linenumbering="numbered">Response response = client.target("http://localhost:8080/rest/homer/contact").request()
+    .property(HTTP_AUTHENTICATION_BASIC_USERNAME, "homer")
+    .property(HTTP_AUTHENTICATION_BASIC_PASSWORD, "p1swd745").get();</programlisting>
+                This allows you to reuse the same client for authenticating with many different credentials.
+            </para>
+            <para>
+                See javadoc of the &jersey.client.HttpAuthenticationFeature; for more details.
+            </para>
+    </section>
+
 
     </section>
 </chapter>

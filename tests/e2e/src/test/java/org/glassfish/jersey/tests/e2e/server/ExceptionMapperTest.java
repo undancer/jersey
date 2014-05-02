@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -79,8 +79,9 @@ import org.glassfish.jersey.message.internal.MessageBodyProviderNotFoundExceptio
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
 
-import org.junit.Assert;
 import org.junit.Test;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 
 /**
@@ -109,7 +110,14 @@ public class ExceptionMapperTest extends JerseyTest {
                 IOExceptionMessageReader.class,
                 IOExceptionResource.class,
                 MessageBodyProviderNotFoundResource.class,
-                ProviderNotFoundExceptionMapper.class
+                ProviderNotFoundExceptionMapper.class,
+                // JERSEY-1887
+                Jersey1887Resource.class,
+                Jersey1887ExceptionMapperImpl.class,
+                // JERSEY-2382
+                Jersey2382Resource.class,
+                Jersey2382ExceptionMapper.class,
+                Jersey2382Provider.class
         );
     }
 
@@ -140,7 +148,7 @@ public class ExceptionMapperTest extends JerseyTest {
         inputStream.read();
         MyMessageBodyWritter.firstBytesReceived = true;
         while ((b = (byte) inputStream.read()) >= 0) {
-            Assert.assertEquals('a', b);
+            assertEquals('a', b);
         }
     }
 
@@ -514,8 +522,8 @@ public class ExceptionMapperTest extends JerseyTest {
     public void testIOException() {
         final Response response = target().register(IOExceptionMessageReader.class).
                 path("io").request().post(Entity.entity(new IOBean("io-bean"), MediaType.TEXT_PLAIN));
-        Assert.assertEquals(200, response.getStatus());
-        Assert.assertEquals("passed", response.readEntity(String.class));
+        assertEquals(200, response.getStatus());
+        assertEquals("passed", response.readEntity(String.class));
     }
 
     @Test
@@ -555,7 +563,110 @@ public class ExceptionMapperTest extends JerseyTest {
     @Test
     public void testNotFoundResource() {
         final Response response = target().path("not-found").request().get();
-        Assert.assertEquals(500, response.getStatus());
+        assertEquals(500, response.getStatus());
     }
 
+
+    public static class Jersey1887Exception extends RuntimeException {
+    }
+
+    @Provider
+    public static interface Jersey1887ExceptionMapper extends ExceptionMapper<Jersey1887Exception> {
+    }
+
+    public static class Jersey1887ExceptionMapperImpl implements Jersey1887ExceptionMapper {
+
+        @Override
+        public Response toResponse(final Jersey1887Exception exception) {
+            return Response.ok("found").build();
+        }
+    }
+
+    @Path("jersey1887")
+    public static class Jersey1887Resource {
+
+        @GET
+        public Response get() {
+            throw new Jersey1887Exception();
+        }
+    }
+
+    /**
+     * Test that we're able to use correct exception mapper even when the mapper hierarchy has complex inheritance.
+     */
+    @Test
+    public void testJersey1887() throws Exception {
+        final Response response = target().path("jersey1887").request().get();
+
+        assertThat(response.getStatus(), equalTo(200));
+        assertThat(response.readEntity(String.class), equalTo("found"));
+    }
+
+    public static class Jersey2382Exception extends RuntimeException {
+    }
+
+    public static class Jersey2382Entity {
+    }
+
+    @Provider
+    public static class Jersey2382Provider implements MessageBodyWriter<Jersey2382Entity> {
+
+        @Override
+        public boolean isWriteable(final Class<?> type, final Type genericType, final Annotation[] annotations,
+                                   final MediaType mediaType) {
+            return true;
+        }
+
+        @Override
+        public long getSize(final Jersey2382Entity jersey2382Entity, final Class<?> type, final Type genericType,
+                            final Annotation[] annotations, final MediaType mediaType) {
+            return -1;
+        }
+
+        @Override
+        public void writeTo(final Jersey2382Entity jersey2382Entity,
+                            final Class<?> type,
+                            final Type genericType,
+                            final Annotation[] annotations,
+                            final MediaType mediaType,
+                            final MultivaluedMap<String, Object> httpHeaders,
+                            final OutputStream entityStream) throws IOException, WebApplicationException {
+            if (Jersey2382Entity.class != type) {
+                entityStream.write("wrong-type".getBytes());
+            } else if (Jersey2382Entity.class != genericType) {
+                entityStream.write("wrong-generic-type".getBytes());
+            } else {
+                entityStream.write("ok".getBytes());
+            }
+        }
+    }
+
+    @Provider
+    public static class Jersey2382ExceptionMapper implements ExceptionMapper<Jersey2382Exception> {
+
+        @Override
+        public Response toResponse(final Jersey2382Exception exception) {
+            return Response.ok(new Jersey2382Entity()).build();
+        }
+    }
+
+    @Path("jersey2382")
+    public static class Jersey2382Resource {
+
+        @GET
+        public List<List<Integer>> get() {
+            throw new Jersey2382Exception();
+        }
+    }
+
+    /**
+     * Test that we're able to use correct exception mapper even when the mapper hierarchy has complex inheritance.
+     */
+    @Test
+    public void testJersey2382() throws Exception {
+        final Response response = target().path("jersey2382").request().get();
+
+        assertThat(response.getStatus(), equalTo(200));
+        assertThat(response.readEntity(String.class), equalTo("ok"));
+    }
 }

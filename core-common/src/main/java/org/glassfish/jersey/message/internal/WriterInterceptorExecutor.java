@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -46,6 +46,8 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
 import java.util.Iterator;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javax.ws.rs.ProcessingException;
 import javax.ws.rs.WebApplicationException;
@@ -57,9 +59,12 @@ import javax.ws.rs.ext.WriterInterceptorContext;
 
 import org.glassfish.jersey.internal.LocalizationMessages;
 import org.glassfish.jersey.internal.PropertiesDelegate;
+import org.glassfish.jersey.internal.inject.ServiceLocatorSupplier;
 import org.glassfish.jersey.message.MessageBodyWorkers;
 
-import com.google.common.collect.Lists;
+import org.glassfish.hk2.api.ServiceLocator;
+
+import jersey.repackaged.com.google.common.collect.Lists;
 
 /**
  * Represents writer interceptor chain executor for both client and server side.
@@ -70,7 +75,10 @@ import com.google.common.collect.Lists;
  * @author Miroslav Fuksa (miroslav.fuksa at oracle.com)
  * @author Jakub Podlesak (jakub.podlesak at oracle.com)
  */
-public final class WriterInterceptorExecutor extends InterceptorExecutor<WriterInterceptor> implements WriterInterceptorContext {
+public final class WriterInterceptorExecutor extends InterceptorExecutor<WriterInterceptor>
+        implements WriterInterceptorContext, ServiceLocatorSupplier {
+
+    private static final Logger LOGGER = Logger.getLogger(WriterInterceptorExecutor.class.getName());
 
     private OutputStream outputStream;
     private final MultivaluedMap<String, Object> headers;
@@ -78,6 +86,9 @@ public final class WriterInterceptorExecutor extends InterceptorExecutor<WriterI
 
     private final Iterator<WriterInterceptor> iterator;
     private int processedCount;
+
+    private final ServiceLocator serviceLocator;
+
 
     /**
      * Constructs a new executor to write given type to provided {@link InputStream entityStream}.
@@ -96,9 +107,9 @@ public final class WriterInterceptorExecutor extends InterceptorExecutor<WriterI
      * @param propertiesDelegate request-scoped properties delegate.
      * @param entityStream {@link java.io.InputStream} from which an entity will be read. The stream is not
      *            closed after reading the entity.
-     * @param workers {@link MessageBodyWorkers Message body workers}.
+     * @param workers {@link org.glassfish.jersey.message.MessageBodyWorkers Message body workers}.
      * @param writerInterceptors Writer interceptor that are to be used to intercept the writing of an entity. The interceptors
-     *                           will be executed in the same order as given in this parameter.
+     * @param serviceLocator Service locator.
      */
     public WriterInterceptorExecutor(Object entity, Class<?> rawType,
                                      Type type,
@@ -108,12 +119,14 @@ public final class WriterInterceptorExecutor extends InterceptorExecutor<WriterI
                                      PropertiesDelegate propertiesDelegate,
                                      OutputStream entityStream,
                                      MessageBodyWorkers workers,
-                                     Iterable<WriterInterceptor> writerInterceptors) {
+                                     Iterable<WriterInterceptor> writerInterceptors,
+                                     ServiceLocator serviceLocator) {
 
         super(rawType, type, annotations, mediaType, propertiesDelegate);
         this.entity = entity;
         this.headers = headers;
         this.outputStream = entityStream;
+        this.serviceLocator = serviceLocator;
 
         final List<WriterInterceptor> effectiveInterceptors = Lists.newArrayList(writerInterceptors);
         effectiveInterceptors.add(new TerminalWriterInterceptor(workers));
@@ -188,6 +201,11 @@ public final class WriterInterceptorExecutor extends InterceptorExecutor<WriterI
         return processedCount;
     }
 
+    @Override
+    public ServiceLocator getServiceLocator() {
+        return serviceLocator;
+    }
+
     /**
      * Terminal writer interceptor which choose the appropriate {@link MessageBodyWriter}
      * and writes the entity to the output stream. The order of actions is the following: <br>
@@ -224,6 +242,8 @@ public final class WriterInterceptorExecutor extends InterceptorExecutor<WriterI
                         context.getAnnotations(), context.getMediaType(), WriterInterceptorExecutor.this);
 
                 if (writer == null) {
+                    LOGGER.log(Level.SEVERE, LocalizationMessages.ERROR_NOTFOUND_MESSAGEBODYWRITER(
+                            context.getMediaType(), context.getType(), context.getGenericType()));
                     throw new MessageBodyProviderNotFoundException(LocalizationMessages.ERROR_NOTFOUND_MESSAGEBODYWRITER(
                             context.getMediaType(), context.getType(), context.getGenericType()));
                 }

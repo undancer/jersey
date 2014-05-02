@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -46,7 +46,7 @@ import org.glassfish.jersey.oauth1.signature.OAuth1Parameters;
 import org.glassfish.jersey.oauth1.signature.OAuth1Secrets;
 
 /**
- * Oauth 1 client builder default implementation.
+ * OAuth 1 client builder default implementation.
  *
  * @author Miroslav Fuksa (miroslav.fuksa at oracle.com)
  * @since 2.3
@@ -57,19 +57,35 @@ class OAuth1BuilderImpl implements OAuth1Builder {
     private final OAuth1Secrets secrets;
     private ConsumerCredentials consumerCredentials;
 
-
     /**
      * Create a new builder instance.
      *
      * @param consumerCredentials Consumer credentials.
      */
-    OAuth1BuilderImpl(ConsumerCredentials consumerCredentials) {
-        this.params = new OAuth1Parameters();
-        this.secrets = new OAuth1Secrets();
+    OAuth1BuilderImpl(final ConsumerCredentials consumerCredentials) {
+        this(new OAuth1Parameters(), new OAuth1Secrets(), consumerCredentials);
+    }
+
+    /**
+     * Create a new builder instance.
+     *
+     * @param params Pre-configured oauth parameters.
+     * @param secrets Pre-configured oauth secrets.
+     */
+    OAuth1BuilderImpl(final OAuth1Parameters params, final OAuth1Secrets secrets) {
+        this(params, secrets, new ConsumerCredentials(params.getConsumerKey(), secrets.getConsumerSecret()));
+    }
+
+    private OAuth1BuilderImpl(final OAuth1Parameters params, final OAuth1Secrets secrets,
+                              final ConsumerCredentials consumerCredentials) {
+        this.params = params;
+        this.secrets = secrets;
 
         // spec defines that when no callback uri is used (e.g. client is unable to receive callback
         // as it is a mobile application), the "oob" value should be used.
-        this.params.setCallback(OAuth1Parameters.NO_CALLBACK_URI_VALUE);
+        if (this.params.getCallback() == null) {
+            this.params.setCallback(OAuth1Parameters.NO_CALLBACK_URI_VALUE);
+        }
         this.consumerCredentials = consumerCredentials;
     }
 
@@ -114,17 +130,17 @@ class OAuth1BuilderImpl implements OAuth1Builder {
         secrets.setConsumerSecret(consumerCredentials.getConsumerSecret());
     }
 
-
     @Override
     public FlowBuilder authorizationFlow(String requestTokenUri, String accessTokenUri, String authorizationUri) {
         defineCredentialsParams();
-        return new OAuth1AuthorizationFlowImpl.Builder(consumerCredentials, requestTokenUri, accessTokenUri, authorizationUri);
+        return new OAuth1AuthorizationFlowImpl.Builder(params, secrets, requestTokenUri, accessTokenUri, authorizationUri);
     }
 
     /**
      * OAuth 1 client filter feature builder default implementation.
      */
     static class FilterBuilderImpl implements FilterFeatureBuilder {
+
         private final OAuth1Parameters params;
         private final OAuth1Secrets secrets;
         private AccessToken accessToken;
@@ -140,7 +156,6 @@ class OAuth1BuilderImpl implements OAuth1Builder {
             this.secrets = secrets;
         }
 
-
         @Override
         public FilterFeatureBuilder accessToken(AccessToken accessToken) {
             this.accessToken = accessToken;
@@ -153,8 +168,7 @@ class OAuth1BuilderImpl implements OAuth1Builder {
                 params.setToken(accessToken.getToken());
                 secrets.setTokenSecret(accessToken.getAccessTokenSecret());
             }
-            OAuth1ClientFilter filter = new OAuth1ClientFilter(params, secrets);
-            return new OAuth1ClientFeature(filter);
+            return new OAuth1ClientFeature(params, secrets);
         }
     }
 }

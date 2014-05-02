@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -56,8 +56,10 @@ import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.server.Uri;
 
 import org.junit.Test;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.assertThat;
 
 /**
  * @author Pavel Bucek (pavel.bucek at oracle.com)
@@ -185,13 +187,14 @@ public class UriTest extends AbstractTest {
         initiateWebApplication(Resource2.class);
 
         try {
-            final ContainerResponse response = apply(
-                    RequestContextBuilder.from("/test/1", "GET").
-                            build()
+            apply(
+                    RequestContextBuilder.from("/test/1", "GET").build()
             );
-            fail("Execution exception expected.");
         } catch (ExecutionException ex) {
-            return;
+            // ISE thrown from WebTarget
+            assertThat(ex.getCause(), instanceOf(IllegalStateException.class));
+            // IAE thrown from UriBuilder - unresolved template parameter value
+            assertThat(ex.getCause().getCause(), instanceOf(IllegalArgumentException.class));
         }
     }
 
@@ -213,13 +216,14 @@ public class UriTest extends AbstractTest {
         initiateWebApplication(Resource3.class);
 
         try {
-            final ContainerResponse response = apply(
-                    RequestContextBuilder.from("/test/1", "GET").
-                            build()
+            apply(
+                    RequestContextBuilder.from("/test/1", "GET").build()
             );
-            fail("Execution exception expected.");
         } catch (ExecutionException ex) {
-            return;
+            // ISE thrown from WebTarget
+            assertThat(ex.getCause(), instanceOf(IllegalStateException.class));
+            // IAE thrown from UriBuilder - unresolved template parameter value
+            assertThat(ex.getCause().getCause(), instanceOf(IllegalArgumentException.class));
         }
     }
 
@@ -277,5 +281,40 @@ public class UriTest extends AbstractTest {
         );
 
         assertEquals("http://oracle.com/relative", response.getEntity());
+    }
+
+    @Path("test")
+    public static class Resource5 {
+
+        @Uri("http://oracle.com/{template}")
+        WebTarget webTarget1;
+
+        @GET
+        @Path("1")
+        public String doGet1() {
+            return webTarget1.resolveTemplate("template", "foo").getUri().toString();
+        }
+
+        @GET
+        @Path("2")
+        public String doGet2(@Uri("http://oracle.com/{template}") WebTarget webTarget2) {
+            return webTarget2.resolveTemplate("template", "bar").getUri().toString();
+        }
+    }
+
+    @Test
+    public void testResolveTemplateInFieldManagedClient() throws Exception {
+        initiateWebApplication(Resource5.class);
+        final ContainerResponse response = apply(RequestContextBuilder.from("/test/1", "GET").build());
+
+        assertThat(response.getEntity().toString(), equalTo("http://oracle.com/foo"));
+    }
+
+    @Test
+    public void testResolveTemplateInParamManagedClient() throws Exception {
+        initiateWebApplication(Resource5.class);
+        final ContainerResponse response = apply(RequestContextBuilder.from("/test/2", "GET").build());
+
+        assertThat(response.getEntity().toString(), equalTo("http://oracle.com/bar"));
     }
 }

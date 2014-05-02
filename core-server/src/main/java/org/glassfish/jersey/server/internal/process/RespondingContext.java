@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -43,12 +43,12 @@ import org.glassfish.jersey.process.internal.ChainableStage;
 import org.glassfish.jersey.process.internal.Stage;
 import org.glassfish.jersey.server.ContainerResponse;
 
-import com.google.common.base.Function;
+import jersey.repackaged.com.google.common.base.Function;
 
 /**
- * Injectable context that can be used during the data processing for
- * registering response processing functions that will be invoked during the
- * response processing.
+ * Context that can be used during the data processing for registering response
+ * processing stages and/or functions that will be invoked during the response processing
+ * to transform the response before it is written to the client.
  *
  * @author Marek Potociar (marek.potociar at oracle.com)
  */

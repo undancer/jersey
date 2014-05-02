@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2011-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -41,6 +41,7 @@ package org.glassfish.jersey.server;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.Retention;
+
 import static java.lang.annotation.ElementType.FIELD;
 import static java.lang.annotation.ElementType.METHOD;
 import static java.lang.annotation.ElementType.PARAMETER;
@@ -102,8 +103,9 @@ public @interface Uri {
      *
      * In case the annotation is used from a JAX-RS resource class, an absolute
      * or relative URI template value may be provided. The template parameter (e.g. {@code {id}})
-     * values are resolved in the context of the enclosing resource class
+     * values are automatically resolved in the context of the enclosing resource class
      * {@link javax.ws.rs.Path path template} as well as the context of the processed request.
+     * Other defined template parameters have to be resolved before invocation of managed web target.
      * For example:
      * <pre>
      * &#64;Path("users/{name}")

@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -46,8 +46,7 @@ import javax.ws.rs.core.PathSegment;
 
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
-
-import static junit.framework.TestCase.assertTrue;
+import static org.junit.Assert.assertTrue;
 
 /**
  * Unit test for {@link UriComponent} class.
@@ -188,6 +187,22 @@ public class UriComponentTest {
                 UriComponent.decode("+", UriComponent.Type.QUERY_PARAM));
         assertEquals("a b c ",
                 UriComponent.decode("a+b+c+", UriComponent.Type.QUERY_PARAM));
+        assertEquals(" ",
+                UriComponent.decode("%20", UriComponent.Type.QUERY_PARAM));
+        assertEquals("a b c ",
+                UriComponent.decode("a%20b%20c%20", UriComponent.Type.QUERY_PARAM));
+    }
+
+    @Test
+    public void testDecodeQueryParamSpaceEncoded() {
+        assertEquals("+",
+                UriComponent.decode("+", UriComponent.Type.QUERY_PARAM_SPACE_ENCODED));
+        assertEquals("a+b+c+",
+                UriComponent.decode("a+b+c+", UriComponent.Type.QUERY_PARAM_SPACE_ENCODED));
+        assertEquals(" ",
+                UriComponent.decode("%20", UriComponent.Type.QUERY_PARAM_SPACE_ENCODED));
+        assertEquals("a b c ",
+                UriComponent.decode("a%20b%20c%20", UriComponent.Type.QUERY_PARAM_SPACE_ENCODED));
     }
 
     private void _testDecodeQuery(String q, String... query) {
@@ -308,6 +323,8 @@ public class UriComponentTest {
                 UriComponent.encode("a b c.-*_=+&%xx%20", UriComponent.Type.QUERY));
         assertEquals("a+b+c.-*_%3D%2B%26%25xx%2520",
                 UriComponent.encode("a b c.-*_=+&%xx%20", UriComponent.Type.QUERY_PARAM));
+        assertEquals("a%20b%20c.-*_%3D%2B%26%25xx%2520",
+                UriComponent.encode("a b c.-*_=+&%xx%20", UriComponent.Type.QUERY_PARAM_SPACE_ENCODED));
     }
 
     @Test
@@ -316,6 +333,8 @@ public class UriComponentTest {
                 UriComponent.contextualEncode("a b c.-*_=+&%xx%20", UriComponent.Type.QUERY));
         assertEquals("a+b+c.-*_%3D%2B%26%25xx%20",
                 UriComponent.contextualEncode("a b c.-*_=+&%xx%20", UriComponent.Type.QUERY_PARAM));
+        assertEquals("a%20b%20c.-*_%3D%2B%26%25xx%20",
+                UriComponent.contextualEncode("a b c.-*_=+&%xx%20", UriComponent.Type.QUERY_PARAM_SPACE_ENCODED));
     }
 
     @Test

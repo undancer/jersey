@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -54,21 +54,21 @@ import javax.ws.rs.core.SecurityContext;
 import org.glassfish.jersey.internal.Errors;
 import org.glassfish.jersey.internal.inject.Injections;
 import org.glassfish.jersey.internal.inject.Providers;
-import org.glassfish.jersey.internal.util.PropertiesHelper;
 import org.glassfish.jersey.model.internal.RankedComparator;
 import org.glassfish.jersey.model.internal.RankedProvider;
-import org.glassfish.jersey.server.ContainerRequest;
 import org.glassfish.jersey.server.ServerProperties;
 import org.glassfish.jersey.server.SubjectSecurityContext;
 import org.glassfish.jersey.server.internal.JerseyResourceContext;
 import org.glassfish.jersey.server.internal.LocalizationMessages;
 import org.glassfish.jersey.server.internal.process.MappableException;
+import org.glassfish.jersey.server.internal.process.RequestProcessingContext;
 import org.glassfish.jersey.server.model.ComponentModelValidator;
 import org.glassfish.jersey.server.model.ModelProcessor;
 import org.glassfish.jersey.server.model.ModelValidationException;
 import org.glassfish.jersey.server.model.Resource;
 import org.glassfish.jersey.server.model.ResourceMethod;
 import org.glassfish.jersey.server.model.ResourceModel;
+import org.glassfish.jersey.server.model.ResourceModelComponent;
 import org.glassfish.jersey.server.model.internal.ModelErrors;
 import org.glassfish.jersey.server.monitoring.RequestEvent;
 import org.glassfish.jersey.server.spi.internal.ParameterValueHelper;
@@ -96,7 +96,6 @@ class SubResourceLocatorRouter implements Router {
     private final boolean disableValidation;
     private final boolean ignoreValidationErrors;
 
-
     /**
      * Create a new sub-resource locator router.
      *
@@ -115,21 +114,21 @@ class SubResourceLocatorRouter implements Router {
         this.resourceContext = locator.getService(JerseyResourceContext.class);
 
         final Configuration config = locator.getService(Configuration.class);
-        this.disableValidation = PropertiesHelper.getValue(config.getProperties(),
+        this.disableValidation = ServerProperties.getValue(config.getProperties(),
                 ServerProperties.RESOURCE_VALIDATION_DISABLE,
                 Boolean.FALSE,
                 Boolean.class);
-        this.ignoreValidationErrors = PropertiesHelper.getValue(config.getProperties(),
+        this.ignoreValidationErrors = ServerProperties.getValue(config.getProperties(),
                 ServerProperties.RESOURCE_VALIDATION_IGNORE_ERRORS,
                 Boolean.FALSE,
                 Boolean.class);
     }
 
     @Override
-    public Continuation apply(final ContainerRequest request) {
-        final RoutingContext routingCtx = Injections.getOrCreate(locator, RoutingContext.class);
+    public Continuation apply(final RequestProcessingContext processingContext) {
+        Object subResourceInstance = getResource(processingContext);
 
-        Object subResourceInstance = getResource(routingCtx, request);
+        final RoutingContext routingContext = processingContext.routingContext();
 
         if (subResourceInstance == null) {
             throw new NotFoundException();
@@ -143,7 +142,7 @@ class SubResourceLocatorRouter implements Router {
                 final Class<?> clazz = (Class<?>) subResourceInstance;
                 subResourceInstance = Injections.getOrCreate(locator, clazz);
             } else {
-                routingCtx.pushMatchedResource(subResourceInstance);
+                routingContext.pushMatchedResource(subResourceInstance);
                 resourceContext.bindResourceIfSingleton(subResourceInstance);
             }
 
@@ -162,8 +161,8 @@ class SubResourceLocatorRouter implements Router {
         }
 
         subResource = resourceModel.getResources().get(0);
-        routingCtx.pushLocatorSubResource(subResource);
-        request.triggerEvent(RequestEvent.Type.SUBRESOURCE_LOCATED);
+        routingContext.pushLocatorSubResource(subResource);
+        processingContext.triggerEvent(RequestEvent.Type.SUBRESOURCE_LOCATED);
 
 
         for (Class<?> handlerClass : subResource.getHandlerClasses()) {
@@ -173,7 +172,7 @@ class SubResourceLocatorRouter implements Router {
         // TODO: implement generated sub-resource methodAcceptorPair caching
         Router subResourceAcceptor = runtimeModelBuilder.buildModel(resourceModel.getRuntimeResourceModel(), true);
 
-        return Continuation.of(request, subResourceAcceptor);
+        return Continuation.of(processingContext, subResourceAcceptor);
     }
 
     private ResourceModel processSubResource(ResourceModel subResourceModel) {
@@ -198,12 +197,12 @@ class SubResourceLocatorRouter implements Router {
 
     }
 
-    private void validate(final ResourceModel resourceModel, final boolean ignoreFatalIssues) {
+    private void validate(final ResourceModelComponent component, final boolean ignoreFatalIssues) {
         Errors.process(new Runnable() {
             @Override
             public void run() {
                 final ComponentModelValidator validator = new ComponentModelValidator(locator);
-                validator.validate(resourceModel);
+                validator.validate(component);
 
                 if (Errors.fatalIssuesFound() && !ignoreFatalIssues) {
                     throw new ModelValidationException(LocalizationMessages.ERROR_VALIDATION_SUBRESOURCE(),
@@ -213,12 +212,13 @@ class SubResourceLocatorRouter implements Router {
         });
     }
 
-    private Object getResource(RoutingContext routingCtx, ContainerRequest request) {
-        final Object resource = routingCtx.peekMatchedResource();
+    private Object getResource(final RequestProcessingContext context) {
+
+        final Object resource = context.routingContext().peekMatchedResource();
         final Method handlingMethod = locatorModel.getInvocable().getHandlingMethod();
         final Object[] parameterValues = ParameterValueHelper.getParameterValues(valueProviders);
 
-        request.triggerEvent(RequestEvent.Type.LOCATOR_MATCHED);
+        context.triggerEvent(RequestEvent.Type.LOCATOR_MATCHED);
 
         final PrivilegedAction invokeMethodAction = new PrivilegedAction() {
             @Override
@@ -227,31 +227,24 @@ class SubResourceLocatorRouter implements Router {
 
                     return handlingMethod.invoke(resource, parameterValues);
 
-                } catch (IllegalAccessException ex) {
-                    throw new ProcessingException(LocalizationMessages.ERROR_RESOURCE_JAVA_METHOD_INVOCATION(), ex);
-                } catch (IllegalArgumentException ex) {
-                    throw new ProcessingException(LocalizationMessages.ERROR_RESOURCE_JAVA_METHOD_INVOCATION(), ex);
-                } catch (UndeclaredThrowableException ex) {
+                } catch (IllegalAccessException | IllegalArgumentException | UndeclaredThrowableException ex) {
                     throw new ProcessingException(LocalizationMessages.ERROR_RESOURCE_JAVA_METHOD_INVOCATION(), ex);
                 } catch (InvocationTargetException ex) {
-                    throw mapTargetToRuntimeEx(ex.getCause());
+                    final Throwable cause = ex.getCause();
+                    if (cause instanceof WebApplicationException) {
+                        throw (WebApplicationException) cause;
+                    }
+                    // handle all exceptions as potentially mappable (incl. ProcessingException)
+                    throw new MappableException(cause);
                 } catch (Throwable t) {
                     throw new ProcessingException(t);
                 }
             }
         };
 
-        final SecurityContext securityContext = request.getSecurityContext();
+        final SecurityContext securityContext = context.request().getSecurityContext();
         return (securityContext instanceof SubjectSecurityContext)
                 ? ((SubjectSecurityContext) securityContext).doAsSubject(invokeMethodAction) : invokeMethodAction.run();
 
-    }
-
-    private static RuntimeException mapTargetToRuntimeEx(Throwable throwable) {
-        if (throwable instanceof WebApplicationException) {
-            return (WebApplicationException) throwable;
-        }
-        // handle all exceptions as potentially mappable (incl. ProcessingException)
-        return new MappableException(throwable);
     }
 }

@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -46,7 +46,6 @@ import java.util.logging.Logger;
 
 import javax.ws.rs.core.UriBuilder;
 
-import com.google.common.io.ByteStreams;
 import org.glassfish.jersey.filter.LoggingFilter;
 import org.glassfish.jersey.grizzly2.httpserver.GrizzlyHttpServerFactory;
 import org.glassfish.jersey.server.ResourceConfig;
@@ -54,6 +53,8 @@ import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.grizzly.http.server.HttpServer;
 import org.glassfish.grizzly.ssl.SSLContextConfigurator;
 import org.glassfish.grizzly.ssl.SSLEngineConfigurator;
+
+import com.google.common.io.ByteStreams;
 
 /**
  * @author Pavel Bucek (pavel.bucek at oracle.com)
@@ -120,7 +121,7 @@ public class Server {
     }
 
     protected static void stopServer() {
-        webServer.stop();
+        webServer.shutdownNow();
     }
 
     @SuppressWarnings("ResultOfMethodCallIgnored")

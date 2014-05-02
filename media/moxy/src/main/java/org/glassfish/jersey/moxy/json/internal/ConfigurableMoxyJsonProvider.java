@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -68,8 +68,8 @@ import org.eclipse.persistence.jaxb.MarshallerProperties;
 import org.eclipse.persistence.jaxb.UnmarshallerProperties;
 import org.eclipse.persistence.jaxb.rs.MOXyJsonProvider;
 
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
+import jersey.repackaged.com.google.common.collect.Maps;
+import jersey.repackaged.com.google.common.collect.Sets;
 
 /**
  * Jersey specific {@link MOXyJsonProvider} that can be configured via {@code ContextResolver<JsonMoxyConfiguration>} instance.
@@ -182,12 +182,16 @@ public class ConfigurableMoxyJsonProvider extends MOXyJsonProvider {
         return properties;
     }
 
+    @Override
     public boolean isReadable(Class<?> type, Type genericType, Annotation[] annotations, MediaType mediaType) {
-        return !isPrimitiveType(type) && super.isReadable(type, genericType, annotations, mediaType);
+        return !isPrimitiveType(type) && !Map.class.isAssignableFrom(type) && super.isReadable(type, genericType, annotations,
+                mediaType);
     }
 
+    @Override
     public boolean isWriteable(Class<?> type, Type genericType, Annotation[] annotations, MediaType mediaType) {
-        return !isPrimitiveType(type) && super.isWriteable(type, genericType, annotations, mediaType);
+        return !isPrimitiveType(type) && !Map.class.isAssignableFrom(type) && super.isWriteable(type, genericType, annotations,
+                mediaType);
     }
 
     private boolean isPrimitiveType(final Class<?> type) {

@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -45,7 +45,7 @@ import java.io.StringWriter;
 import java.text.ParseException;
 import java.util.Set;
 
-import javax.ws.rs.WebApplicationException;
+import javax.ws.rs.ProcessingException;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.MediaType;
@@ -54,11 +54,11 @@ import org.glassfish.jersey.media.multipart.BodyPart;
 import org.glassfish.jersey.media.multipart.BodyPartEntity;
 import org.glassfish.jersey.media.multipart.MultiPart;
 
-import org.junit.Ignore;
 import org.junit.Test;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
-import com.google.common.collect.Sets;
+import jersey.repackaged.com.google.common.collect.Sets;
 
 /**
  * Unit tests for {@link org.glassfish.jersey.media.multipart.internal.MultiPartReaderClientSide} (in the client) and
@@ -95,7 +95,7 @@ public class MultiPartReaderWriterTest extends MultiPartJerseyTest {
         } catch (IOException e) {
             e.printStackTrace(System.out);
             fail("Caught exception: " + e);
-        } catch(ParseException e) {
+        } catch (ParseException e) {
             e.printStackTrace(System.out);
             fail("Caught exception: " + e);
         }
@@ -119,7 +119,7 @@ public class MultiPartReaderWriterTest extends MultiPartJerseyTest {
         } catch (IOException e) {
             e.printStackTrace(System.out);
             fail("Caught exception: " + e);
-        } catch(ParseException e) {
+        } catch (ParseException e) {
             e.printStackTrace(System.out);
             fail("Caught exception: " + e);
         }
@@ -144,7 +144,7 @@ public class MultiPartReaderWriterTest extends MultiPartJerseyTest {
         } catch (IOException e) {
             e.printStackTrace(System.out);
             fail("Caught exception: " + e);
-        } catch(ParseException e) {
+        } catch (ParseException e) {
             e.printStackTrace(System.out);
             fail("Caught exception: " + e);
         }
@@ -171,7 +171,7 @@ public class MultiPartReaderWriterTest extends MultiPartJerseyTest {
         } catch (IOException e) {
             e.printStackTrace(System.out);
             fail("Caught exception: " + e);
-        } catch(ParseException e) {
+        } catch (ParseException e) {
             e.printStackTrace(System.out);
             fail("Caught exception: " + e);
         }
@@ -183,8 +183,8 @@ public class MultiPartReaderWriterTest extends MultiPartJerseyTest {
 
         MultiPartBean bean = new MultiPartBean("myname", "myvalue");
         MultiPart entity = new MultiPart().
-          bodyPart("This is the first segment", new MediaType("text", "plain")).
-          bodyPart(bean, new MediaType("x-application", "x-format"));
+                bodyPart("This is the first segment", new MediaType("text", "plain")).
+                bodyPart(bean, new MediaType("x-application", "x-format"));
         String response = target.request("text/plain").put(Entity.entity(entity, "multipart/mixed"), String.class);
         if (!response.startsWith("SUCCESS:")) {
             fail("Response is '" + response + "'");
@@ -197,8 +197,8 @@ public class MultiPartReaderWriterTest extends MultiPartJerseyTest {
 
         MultiPartBean bean = new MultiPartBean("myname", "myvalue");
         MultiPart entity = new MultiPart().
-          bodyPart("This is the first segment", new MediaType("text", "plain")).
-          bodyPart(bean, new MediaType("x-application", "x-format"));
+                bodyPart("This is the first segment", new MediaType("text", "plain")).
+                bodyPart(bean, new MediaType("x-application", "x-format"));
         String response = target.request("text/plain").header("Content-Type", "multipart/mixed").
                 put(Entity.entity(entity, "multipart/mixed"), String.class);
         if (!response.startsWith("SUCCESS:")) {
@@ -209,22 +209,14 @@ public class MultiPartReaderWriterTest extends MultiPartJerseyTest {
     /**
      * Test sending a completely empty MultiPart.
      */
-    @Test
-    @Ignore
-    // TODO un-ignore
+    @Test(expected = ProcessingException.class)
     public void testSix() {
-        final WebTarget target = target().path("multipart/six");
+        target()
+                .path("multipart/six")
+                .request("text/plain")
+                .post(Entity.entity(new MultiPart(), "multipart/mixed"), String.class);
 
-        try {
-            String result = target.request("text/plain").post(Entity.entity(new MultiPart(), "multipart/mixed"), String.class);
-            fail("Should have thrown an exception about zero body parts");
-        } catch (WebApplicationException e) {
-            assertNotNull(e.getCause());
-            assertEquals(WebApplicationException.class, e.getCause().getClass());
-            WebApplicationException wae = (WebApplicationException) e.getCause();
-            assertNotNull(wae.getCause());
-            assertEquals(IllegalArgumentException.class, wae.getCause().getClass());
-        }
+        fail("Should have thrown an exception about zero body parts");
     }
 
     /**
@@ -238,7 +230,8 @@ public class MultiPartReaderWriterTest extends MultiPartJerseyTest {
         MultiPart entity = new MultiPart().
                 bodyPart(bean, new MediaType("x-application", "x-format")).
                 bodyPart("", MediaType.APPLICATION_OCTET_STREAM_TYPE);
-        String response = target.request("text/plain").put(Entity.entity(entity, "multipart/mixed"), String.class);;
+        String response = target.request("text/plain").put(Entity.entity(entity, "multipart/mixed"), String.class);
+        ;
         if (!response.startsWith("SUCCESS:")) {
             fail("Response is '" + response + "'");
         }
@@ -248,7 +241,7 @@ public class MultiPartReaderWriterTest extends MultiPartJerseyTest {
      * Echo back various sized body part entities, and check size/content
      */
     @Test
-    public void testEleven() {
+    public void testEleven() throws Exception {
         String seed = "0123456789ABCDEF";
         checkEleven(seed, 0);
         checkEleven(seed, 1);
@@ -263,11 +256,10 @@ public class MultiPartReaderWriterTest extends MultiPartJerseyTest {
      * Echo back the multipart that was sent.
      */
     @Test
-    public void testTwelve() {
+    public void testTwelve() throws Exception {
         final WebTarget target = target().path("multipart/twelve");
 
-        MultiPart entity = new MultiPart().
-          bodyPart("CONTENT", MediaType.TEXT_PLAIN_TYPE);
+        MultiPart entity = new MultiPart().bodyPart("CONTENT", MediaType.TEXT_PLAIN_TYPE);
         MultiPart response = target.request("multipart/mixed").put(Entity.entity(entity, "multipart/mixed"), MultiPart.class);
         String actual = response.getBodyParts().get(0).getEntityAs(String.class);
         assertEquals("CONTENT", actual);
@@ -282,7 +274,7 @@ public class MultiPartReaderWriterTest extends MultiPartJerseyTest {
         final WebTarget target = target().path("multipart/thirteen");
 
         MultiPart entity = new MultiPart().
-          bodyPart("CONTENT", MediaType.TEXT_PLAIN_TYPE);
+                bodyPart("CONTENT", MediaType.TEXT_PLAIN_TYPE);
         String response = target.request("multipart/mixed").put(Entity.entity(entity, "multipart/mixed"), String.class);
         assertEquals("cleanup", response);
     }
@@ -302,7 +294,7 @@ public class MultiPartReaderWriterTest extends MultiPartJerseyTest {
         assertEquals(expected, sw.toString());
     }
 
-    private void checkEleven(String seed, int multiplier) {
+    private void checkEleven(String seed, int multiplier) throws Exception {
         StringBuilder sb = new StringBuilder(seed.length() * multiplier);
         for (int i = 0; i < multiplier; i++) {
             sb.append(seed);
@@ -311,8 +303,7 @@ public class MultiPartReaderWriterTest extends MultiPartJerseyTest {
 
         final WebTarget target = target().path("multipart/eleven");
 
-        MultiPart entity = new MultiPart().
-          bodyPart(expected, MediaType.TEXT_PLAIN_TYPE);
+        MultiPart entity = new MultiPart().bodyPart(expected, MediaType.TEXT_PLAIN_TYPE);
         MultiPart response = target.request("multipart/mixed").put(Entity.entity(entity, "multipart/mixed"), MultiPart.class);
         String actual = response.getBodyParts().get(0).getEntityAs(String.class);
         assertEquals("Length for multiplier " + multiplier, expected.length(), actual.length());

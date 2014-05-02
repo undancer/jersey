@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -57,13 +57,13 @@ import javax.validation.executable.ValidateOnExecution;
 
 import org.glassfish.jersey.internal.util.ReflectionHelper;
 
-import com.google.common.base.Supplier;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Multimap;
-import com.google.common.collect.Multimaps;
-import com.google.common.collect.Queues;
-import com.google.common.collect.Sets;
+import jersey.repackaged.com.google.common.base.Supplier;
+import jersey.repackaged.com.google.common.collect.Lists;
+import jersey.repackaged.com.google.common.collect.Maps;
+import jersey.repackaged.com.google.common.collect.Multimap;
+import jersey.repackaged.com.google.common.collect.Multimaps;
+import jersey.repackaged.com.google.common.collect.Queues;
+import jersey.repackaged.com.google.common.collect.Sets;
 
 /**
  * Handler providing methods to determine whether an executable should be validated during the validation process based on the
@@ -93,17 +93,16 @@ class ValidateOnExecutionHandler {
 
     /**
      * Determine whether the given {@link Method getter} on the given {@link Class clazz} should be validated during the
-     * resource class validation. See {@code #validationMethod} to understand the difference between this and {@code
-     * #validationMethod}.
+     * resource class validation. See {@code #validateMethod} to understand the difference between this and {@code
+     * #validateMethod}.
      *
      * @param clazz class on which the getter will be invoked.
      * @param method method to be examined.
-     * @param forceValidation forces validation of a getter if no {@link ValidateOnExecution} annotation is present.
      * @return {@code true} if the getter should be validated, {@code false} otherwise.
      */
-    boolean validateGetter(final Class<?> clazz, final Method method, final boolean forceValidation) {
+    boolean validateGetter(final Class<?> clazz, final Method method) {
         if (!validateGetterCache.containsKey(method)) {
-            processMethod(clazz, method, method, forceValidation);
+            processMethod(clazz, method, method, true);
         }
         return validateGetterCache.get(method);
     }

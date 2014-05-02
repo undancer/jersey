@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -39,7 +39,13 @@
  */
 package org.glassfish.jersey.client;
 
+import java.util.Map;
+
 import org.glassfish.jersey.CommonProperties;
+import org.glassfish.jersey.internal.util.PropertiesClass;
+import org.glassfish.jersey.internal.util.PropertiesHelper;
+import org.glassfish.jersey.internal.util.PropertyAlias;
+
 
 /**
  * Jersey client implementation configuration properties.
@@ -47,6 +53,7 @@ import org.glassfish.jersey.CommonProperties;
  * @author Marek Potociar (marek.potociar at oracle.com)
  * @author Libor Kramolis (libor.kramolis at oracle.com)
  */
+@PropertiesClass
 public final class ClientProperties {
 
     /**
@@ -59,8 +66,8 @@ public final class ClientProperties {
      * <p />
      * The name of the configuration property is <tt>{@value}</tt>.
      */
-    public static final String FOLLOW_REDIRECTS =
-            "jersey.config.client.followRedirects";
+    public static final String FOLLOW_REDIRECTS = "jersey.config.client.followRedirects";
+
     /**
      * Read timeout interval, in milliseconds.
      *
@@ -73,6 +80,7 @@ public final class ClientProperties {
      * The name of the configuration property is <tt>{@value}</tt>.
      */
     public static final String READ_TIMEOUT = "jersey.config.client.readTimeout";
+
     /**
      * Connect timeout interval, in milliseconds.
      *
@@ -84,56 +92,44 @@ public final class ClientProperties {
      * The name of the configuration property is <tt>{@value}</tt>.
      */
     public static final String CONNECT_TIMEOUT = "jersey.config.client.connectTimeout";
+
     /**
-     * Chunked encoding size.
-     *
      * The value MUST be an instance convertible to {@link java.lang.Integer}.
      * <p />
-     * If the property is absent then chunked encoding will not be used. A value
-     * &lt= 0 declares that chunked encoding will be used with the default chunk
-     * size. A value &gt 0 declares that chunked encoding will be used with the
-     * value as the declared chunk size.
+     * The property defines the size of the chunk in bytes. The property does not enable
+     * chunked encoding (it is controlled by {@link #REQUEST_ENTITY_PROCESSING} property).
      * <p />
-     * Due to the bug in {@link java.net.HttpURLConnection} using chunk encoding
-     * with {@link HttpUrlConnector} might cause unpredictable problems.
-     * <p />
-     * A default value is not set.
+     * A default value is not set and is {@link org.glassfish.jersey.client.spi.Connector connector}
+     * implementation-specific.
      * <p />
      * The name of the configuration property is <tt>{@value}</tt>.
      */
     public static final String CHUNKED_ENCODING_SIZE = "jersey.config.client.chunkedEncodingSize";
-    /**
-     * Automatic response buffering in case of an exception.
-     *
-     * A value of {@code true} declares that the client will automatically read
-     * & buffer the response entity (if any) and close all resources associated
-     * with the response.
-     *
-     * The value MUST be an instance convertible to {@link java.lang.Boolean}.
-     * <p />
-     * The default value is {@code true}.
-     * <p />
-     * The name of the configuration property is <tt>{@value}</tt>.
-     */
-    // TODO add support (ported from Jersey 1.x).
-    public static final String BUFFER_RESPONSE_ENTITY_ON_EXCEPTION = "jersey.config.client.bufferResponseEntityOnException";
+
     /**
      * Asynchronous thread pool size.
      *
      * The value MUST be an instance of {@link java.lang.Integer}.
-     * <p />
+     * <p>
      * If the property is absent then thread pool used for async requests will
      * be initialized as default cached thread pool, which creates new thread
      * for every new request, see {@link java.util.concurrent.Executors}. When a
-     * value &gt; 0 is provided, the created cached thread pool limited to that
-     * number of threads will be utilized.
-     * <p />
+     * value &gt;&nbsp;0 is provided, the created cached thread pool limited to that
+     * number of threads will be utilized. Zero or negative values will be ignored.
+     * </p>
+     * <p>
+     * Note that the property is ignored if a custom {@link org.glassfish.jersey.spi.RequestExecutorProvider}
+     * is configured in the client runtime.
+     * </p>
+     * <p>
      * A default value is not set.
-     * <p />
+     * </p>
+     * <p>
      * The name of the configuration property is <tt>{@value}</tt>.
+     * </p>
      */
-    // TODO add support (ported from Jersey 1.x).
     public static final String ASYNC_THREADPOOL_SIZE = "jersey.config.client.async.threadPoolSize";
+
     /**
      * If {@link org.glassfish.jersey.client.filter.EncodingFilter} is
      * registered, this property indicates the value of Content-Encoding
@@ -144,21 +140,7 @@ public final class ClientProperties {
      * <p>The name of the configuration property is <tt>{@value}</tt>.</p>
      */
     public static final String USE_ENCODING = "jersey.config.client.useEncoding";
-    /**
-     * A value of {@code true} declares that the client will try to set
-     * unsupported HTTP method to {@link java.net.HttpURLConnection} via
-     * reflection.
-     * <p>
-     * NOTE: Enabling this feature might cause security related warnings/errors
-     * and it might break when other JDK implementation is used. <b>Use only
-     * when you know what you are doing.</b>
-     * </p>
-     * <p>The value MUST be an instance of {@link java.lang.Boolean}.</p>
-     * <p>The default value is {@code false}.</p>
-     * <p>The name of the configuration property is <tt>{@value}</tt>.</p>
-     */
-    public static final String HTTP_URL_CONNECTION_SET_METHOD_WORKAROUND =
-            "jersey.config.client.httpUrlConnection.setMethodWorkaround";
+
     /**
      * If {@code true} then disable auto-discovery on the client.
      * <p>
@@ -173,10 +155,13 @@ public final class ClientProperties {
      * <p>
      * The name of the configuration property is <tt>{@value}</tt>.
      * </p>
+     * <p>This constant is an alias for {@link CommonProperties#FEATURE_AUTO_DISCOVERY_DISABLE_CLIENT}.</p>
      *
      * @see org.glassfish.jersey.CommonProperties#FEATURE_AUTO_DISCOVERY_DISABLE
      */
-    public static final String FEATURE_AUTO_DISCOVERY_DISABLE = CommonProperties.FEATURE_AUTO_DISCOVERY_DISABLE + ".client";
+    @PropertyAlias
+    public static final String FEATURE_AUTO_DISCOVERY_DISABLE = CommonProperties.FEATURE_AUTO_DISCOVERY_DISABLE_CLIENT;
+
     /**
      * An integer value that defines the buffer size used to buffer client-side
      * request entity in order to determine its size and set the value of HTTP
@@ -198,10 +183,13 @@ public final class ClientProperties {
      * <p>
      * The name of the configuration property is <tt>{@value}</tt>.
      * </p>
+     * <p>This constant is an alias for {@link CommonProperties#OUTBOUND_CONTENT_LENGTH_BUFFER_CLIENT}.</p>
      *
      * @since 2.2
      */
-    public static final String OUTBOUND_CONTENT_LENGTH_BUFFER = CommonProperties.OUTBOUND_CONTENT_LENGTH_BUFFER + ".client";
+    @PropertyAlias
+    public static final String OUTBOUND_CONTENT_LENGTH_BUFFER = CommonProperties.OUTBOUND_CONTENT_LENGTH_BUFFER_CLIENT;
+
     /**
      * If {@code true} then disable configuration of Json Processing (JSR-353)
      * feature on client.
@@ -217,11 +205,13 @@ public final class ClientProperties {
      * <p>
      * The name of the configuration property is <tt>{@value}</tt>.
      * </p>
+     * <p>This constant is an alias for {@link CommonProperties#JSON_PROCESSING_FEATURE_DISABLE_CLIENT}.</p>
      *
-     * @see
-     * org.glassfish.jersey.CommonProperties#JSON_PROCESSING_FEATURE_DISABLE
+     * @see org.glassfish.jersey.CommonProperties#JSON_PROCESSING_FEATURE_DISABLE
      */
-    public static final String JSON_PROCESSING_FEATURE_DISABLE = CommonProperties.JSON_PROCESSING_FEATURE_DISABLE + ".client";
+    @PropertyAlias
+    public static final String JSON_PROCESSING_FEATURE_DISABLE = CommonProperties.JSON_PROCESSING_FEATURE_DISABLE_CLIENT;
+
     /**
      * If {@code true} then disable META-INF/services lookup on client.
      * <p>
@@ -235,11 +225,13 @@ public final class ClientProperties {
      * <p>
      * The name of the configuration property is <tt>{@value}</tt>.
      * </p>
+     * <p>This constant is an alias for {@link CommonProperties#METAINF_SERVICES_LOOKUP_DISABLE_CLIENT}.</p>
      *
-     * @see
-     * org.glassfish.jersey.CommonProperties#METAINF_SERVICES_LOOKUP_DISABLE
+     * @see org.glassfish.jersey.CommonProperties#METAINF_SERVICES_LOOKUP_DISABLE
      */
-    public static final String METAINF_SERVICES_LOOKUP_DISABLE = CommonProperties.METAINF_SERVICES_LOOKUP_DISABLE + ".client";
+    @PropertyAlias
+    public static final String METAINF_SERVICES_LOOKUP_DISABLE = CommonProperties.METAINF_SERVICES_LOOKUP_DISABLE_CLIENT;
+
     /**
      * If {@code true} then disable configuration of MOXy Json feature on
      * client.
@@ -256,11 +248,14 @@ public final class ClientProperties {
      * <p>
      * The name of the configuration property is <tt>{@value}</tt>.
      * </p>
+     * <p>This constant is an alias for {@link CommonProperties#MOXY_JSON_FEATURE_DISABLE_CLIENT}.</p>
      *
      * @see org.glassfish.jersey.CommonProperties#MOXY_JSON_FEATURE_DISABLE
      * @since 2.1
      */
-    public static final String MOXY_JSON_FEATURE_DISABLE = CommonProperties.MOXY_JSON_FEATURE_DISABLE + ".client";
+    @PropertyAlias
+    public static final String MOXY_JSON_FEATURE_DISABLE = CommonProperties.MOXY_JSON_FEATURE_DISABLE_CLIENT;
+
     /**
      * If {@code true}, the strict validation of HTTP specification compliance
      * will be suppressed.
@@ -297,10 +292,10 @@ public final class ClientProperties {
     public static final String SUPPRESS_HTTP_COMPLIANCE_VALIDATION =
             "jersey.config.client.suppressHttpComplianceValidation";
 
-
     /**
      * The property defines the size of digest cache in the
-     * {@link org.glassfish.jersey.client.filter.HttpDigestAuthFilter}. Cache contains authentication
+     * {@link org.glassfish.jersey.client.authentication.HttpAuthenticationFeature#digest()}  digest filter}.
+     * Cache contains authentication
      * schemes for different request URIs.
      * <p\>
      * The value MUST be an instance of {@link java.lang.Integer} and it must be
@@ -317,46 +312,130 @@ public final class ClientProperties {
      */
     public static final String DIGESTAUTH_URI_CACHE_SIZELIMIT = "jersey.config.client.digestAuthUriCacheSizeLimit";
 
+    // TODO Need to implement support for PROXY-* properties in other connectors
     /**
-     * If {@code true}, {@link HttpUrlConnector} (if used) will assume the content length
-     * from the value of {@value javax.ws.rs.core.HttpHeaders#CONTENT_LENGTH} request
-     * header (if present).
+     * The property defines a URI of a HTTP proxy the client connector should use.
      * <p>
-     * When this property is enabled and the request has a valid non-zero content length
-     * value specified in its {@value javax.ws.rs.core.HttpHeaders#CONTENT_LENGTH} request
-     * header, that this value will be used as an input to the
-     * {@link java.net.HttpURLConnection#setFixedLengthStreamingMode(int)}} method call
-     * invoked on the underlying {@link java.net.HttpURLConnection connection}.
-     * This will suppress the entity buffering in the @{code HttpURLConnection},
-     * which is undesirable in certain scenarios, e.g. when streaming large entities.
+     * If the port component of the URI is absent then a default port of {@code 8080} is assumed.
+     * If the property absent then no proxy will be utilized.
+     * </p>
+     * <p>The value MUST be an instance of {@link String}.</p>
+     * <p>The default value is {@code null}.</p>
+     * <p>The name of the configuration property is <tt>{@value}</tt>.</p>
+     *
+     * @since 2.5
+     */
+    public static final String PROXY_URI = "jersey.config.client.proxy.uri";
+
+    /**
+     * The property defines a user name which will be used for HTTP proxy authentication.
+     * <p>
+     * The property is ignored if no {@link #PROXY_URI HTTP proxy URI} has been set.
+     * If the property absent then no proxy authentication will be utilized.
+     * </p>
+     * <p>The value MUST be an instance of {@link String}.</p>
+     * <p>The default value is {@code null}.</p>
+     * <p>The name of the configuration property is <tt>{@value}</tt>.</p>
+     *
+     * @since 2.5
+     */
+    public static final String PROXY_USERNAME = "jersey.config.client.proxy.username";
+
+    /**
+     * The property defines a user password which will be used for HTTP proxy authentication.
+     * <p>
+     * The property is ignored if no {@link #PROXY_URI HTTP proxy URI} has been set.
+     * If the property absent then no proxy authentication will be utilized.
+     * </p>
+     * <p>The value MUST be an instance of {@link String}.</p>
+     * <p>The default value is {@code null}.</p>
+     * <p>The name of the configuration property is <tt>{@value}</tt>.</p>
+     *
+     * @since 2.5
+     */
+    public static final String PROXY_PASSWORD = "jersey.config.client.proxy.password";
+    /**
+     * The property specified how the entity should be serialized to the output stream by the
+     * {@link org.glassfish.jersey.client.spi.Connector connector}; if the buffering
+     * should be used or the entity is streamed in chunked encoding.
+     * <p>
+     * The value MUST be an instance of {@link String} or an enum value {@link RequestEntityProcessing} in the case
+     * of programmatic definition of the property. Allowed values are:
+     * <ul>
+     *     <li><b>{@code BUFFERED}</b>: the entity will be buffered and content length will be send in Content-length header.</li>
+     *     <li><b>{@code CHUNKED}</b>: chunked encoding will be used and entity will be streamed.</li>
+     * </ul>
      * </p>
      * <p>
-     * Note that the content length value defined in the request header must exactly match
-     * the real size of the entity. If the {@link javax.ws.rs.core.HttpHeaders#CONTENT_LENGTH} header
-     * is explicitly specified in a request, this property will be ignored and the
-     * request entity will be still buffered by the underlying @{code HttpURLConnection} infrastructure.
-     * </p>
-     * <p>
-     * This property also overrides the behaviour enabled by the {@link #CHUNKED_ENCODING_SIZE} property.
-     * Chunked encoding will only be used, if the size is not specified in the header of the request.
-     * </p>
-     * <p>
-     * Note that this property only applies to client run-times that are configured to use the default
-     * {@link HttpUrlConnector} as the client connector. The property is ignored by other connectors.
-     * </p>
-     * <p>
-     * The default value is {@code false}.
+     * Default value is {@code CHUNKED}. However, due to limitations some connectors can define different
+     * default value (usually if the chunked encoding cannot be properly supported on the {@code Connector}).
+     * This detail should be specified in the javadoc of particular connector. For example, {@link HttpUrlConnector}
+     * use buffering as the default mode.
      * </p>
      * <p>
      * The name of the configuration property is <tt>{@value}</tt>.
      * </p>
-     *
-     * @since 2.4
+     * @since 2.5
      */
-    public static final String HTTP_URL_CONNECTOR_FIX_LENGTH_STREAMING =
-            "jersey.config.client.httpUrlConnector.fixLength.streaming";
+    public static final String REQUEST_ENTITY_PROCESSING = "jersey.config.client.request.entity.processing";
 
     private ClientProperties() {
         // prevents instantiation
+    }
+
+    /**
+     * Get the value of the specified property.
+     *
+     * If the property is not set or the real value type is not compatible with
+     * {@code defaultValue} type, the specified {@code defaultValue} is returned. Calling this method is equivalent to calling
+     * {@code ClientProperties.getValue(properties, key, defaultValue, (Class<T>) defaultValue.getClass())}
+     *
+     * @param properties    Map of properties to get the property value from.
+     * @param key  Name of the property.
+     * @param defaultValue  Default value if property is not registered
+     * @param <T>           Type of the property value.
+     * @return              Value of the property or {@code null}.
+     *
+     * @since 2.8
+     */
+    public static <T> T getValue(Map<String, ?> properties, String key, T defaultValue) {
+        return PropertiesHelper.getValue(properties, key, defaultValue, null);
+    }
+
+    /**
+     * Get the value of the specified property.
+     *
+     * If the property is not set or the real value type is not compatible with the specified value type,
+     * returns {@code defaultValue}.
+     *
+     * @param properties    Map of properties to get the property value from.
+     * @param key  Name of the property.
+     * @param defaultValue  Default value if property is not registered
+     * @param type          Type to retrieve the value as.
+     * @param <T>           Type of the property value.
+     * @return              Value of the property or {@code null}.
+     *
+     * @since 2.8
+     */
+    public static <T> T getValue(Map<String, ?> properties, String key, T defaultValue, Class<T> type) {
+        return PropertiesHelper.getValue(properties, key, defaultValue, type, null);
+    }
+
+    /**
+     * Get the value of the specified property.
+     *
+     * If the property is not set or the actual property value type is not compatible with the specified type, the method will
+     * return {@code null}.
+     *
+     * @param properties    Map of properties to get the property value from.
+     * @param key  Name of the property.
+     * @param type          Type to retrieve the value as.
+     * @param <T>           Type of the property value.
+     * @return              Value of the property or {@code null}.
+     *
+     * @since 2.8
+     */
+    public static <T> T getValue(Map<String, ?> properties, String key, Class<T> type) {
+        return PropertiesHelper.getValue(properties, key, type, null);
     }
 }

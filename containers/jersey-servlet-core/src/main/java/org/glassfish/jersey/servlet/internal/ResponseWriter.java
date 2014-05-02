@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -51,6 +51,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javax.ws.rs.core.MultivaluedMap;
+import javax.ws.rs.core.Response;
 
 import javax.servlet.http.HttpServletResponse;
 
@@ -60,7 +61,7 @@ import org.glassfish.jersey.server.internal.JerseyRequestTimeoutHandler;
 import org.glassfish.jersey.server.spi.ContainerResponseWriter;
 import org.glassfish.jersey.servlet.spi.AsyncContextDelegate;
 
-import com.google.common.util.concurrent.SettableFuture;
+import jersey.repackaged.com.google.common.util.concurrent.SettableFuture;
 
 /**
  * An internal implementation of {@link ContainerResponseWriter} for Servlet containers.
@@ -69,6 +70,7 @@ import com.google.common.util.concurrent.SettableFuture;
  * @author Paul Sandoz (paul.sandoz at oracle.com)
  * @author Jakub Podlesak (jakub.podlesak at oracle.com)
  * @author Martin Matula (martin.matula at oracle.com)
+ * @author Libor Kramolis (libor.kramolis at oracle.com)
  */
 public class ResponseWriter implements ContainerResponseWriter {
 
@@ -76,6 +78,12 @@ public class ResponseWriter implements ContainerResponseWriter {
 
     private final HttpServletResponse response;
     private final boolean useSetStatusOn404;
+    /**
+     * Cached value of configuration property
+     * {@link org.glassfish.jersey.server.ServerProperties#RESPONSE_SET_STATUS_OVER_SEND_ERROR}.
+     * If {@code true} method {@link HttpServletResponse#setStatus} is used over {@link HttpServletResponse#sendError}.
+     */
+    private final boolean configSetStatusOverSendError;
     private final SettableFuture<ContainerResponse> responseContext;
     private final AsyncContextDelegate asyncExt;
 
@@ -84,17 +92,21 @@ public class ResponseWriter implements ContainerResponseWriter {
     /**
      * Creates a new instance to write a single Jersey response.
      *
-     * @param useSetStatusOn404   true if status should be written explicitly when 404 is returned
-     * @param response            original HttpResponseRequest
-     * @param asyncExt            delegate to use for async features implementation
-     * @param timeoutTaskExecutor Jersey runtime executor used for background execution of timeout
-     *                            handling tasks.
+     * @param useSetStatusOn404            true if status should be written explicitly when 404 is returned
+     * @param configSetStatusOverSendError if {@code true} method {@link HttpServletResponse#setStatus} is used over
+     *                                     {@link HttpServletResponse#sendError}
+     * @param response                     original HttpResponseRequest
+     * @param asyncExt                     delegate to use for async features implementation
+     * @param timeoutTaskExecutor          Jersey runtime executor used for background execution of timeout
+     *                                     handling tasks.
      */
     public ResponseWriter(final boolean useSetStatusOn404,
+                          final boolean configSetStatusOverSendError,
                           final HttpServletResponse response,
                           final AsyncContextDelegate asyncExt,
                           final ScheduledExecutorService timeoutTaskExecutor) {
         this.useSetStatusOn404 = useSetStatusOn404;
+        this.configSetStatusOverSendError = configSetStatusOverSendError;
         this.response = response;
         this.asyncExt = asyncExt;
         this.responseContext = SettableFuture.create();
@@ -107,12 +119,12 @@ public class ResponseWriter implements ContainerResponseWriter {
         try {
             // Suspend the servlet.
             asyncExt.suspend();
-
-            // Suspend the internal request timeout handler.
-            return requestTimeoutHandler.suspend(timeOut, timeUnit, timeoutHandler);
         } catch (IllegalStateException ex) {
+            LOGGER.log(Level.WARNING, LocalizationMessages.SERVLET_REQUEST_SUSPEND_FAILED(), ex);
             return false;
         }
+        // Suspend the internal request timeout handler.
+        return requestTimeoutHandler.suspend(timeOut, timeUnit, timeoutHandler);
     }
 
     @Override
@@ -161,7 +173,11 @@ public class ResponseWriter implements ContainerResponseWriter {
             return null;
         } else {
             try {
-                return response.getOutputStream();
+                final OutputStream outputStream = response.getOutputStream();
+
+                // delegating output stream prevents closing the underlying servlet output stream,
+                // so that any Servlet filters in the chain can still write to the response after us.
+                return new NonCloseableOutputStreamWrapper(outputStream);
             } catch (IOException e) {
                 throw new ContainerException(e);
             }
@@ -171,7 +187,7 @@ public class ResponseWriter implements ContainerResponseWriter {
     @Override
     public void commit() {
         try {
-            if (!response.isCommitted()) {
+            if (!configSetStatusOverSendError && !response.isCommitted()) {
                 final ContainerResponse responseContext = getResponseContext();
                 final int status = responseContext.getStatus();
                 if (status >= 400 && !(useSetStatusOn404 && status == 404)) {
@@ -183,7 +199,9 @@ public class ResponseWriter implements ContainerResponseWriter {
                             response.sendError(status, reason);
                         }
                     } catch (IOException ex) {
-                        throw new ContainerException("I/O exception occurred while sending [" + status + "] error response.", ex);
+                        throw new ContainerException(
+                                LocalizationMessages.EXCEPTION_SENDING_ERROR_RESPONSE(status, reason != null ? reason : "--"),
+                                ex);
                     }
                 }
             }
@@ -197,13 +215,19 @@ public class ResponseWriter implements ContainerResponseWriter {
         try {
             if (!response.isCommitted()) {
                 try {
-                    response.reset();
-                    response.sendError(500, "Request failed.");
+                    if (configSetStatusOverSendError) {
+                        response.reset();
+                        //noinspection deprecation
+                        response.setStatus(Response.Status.INTERNAL_SERVER_ERROR.getStatusCode(), "Request failed.");
+                    } else {
+                        response.sendError(Response.Status.INTERNAL_SERVER_ERROR.getStatusCode(), "Request failed.");
+                    }
                 } catch (IllegalStateException ex) {
                     // a race condition externally committing the response can still occur...
                     LOGGER.log(Level.FINER, "Unable to reset failed response.", ex);
                 } catch (IOException ex) {
-                    throw new ContainerException("I/O exception occurred while sending 'Request failed.' error response.", ex);
+                    throw new ContainerException(LocalizationMessages.EXCEPTION_SENDING_ERROR_RESPONSE(
+                            Response.Status.INTERNAL_SERVER_ERROR.getStatusCode(), "Request failed."), ex);
                 } finally {
                     asyncExt.complete();
                 }
@@ -232,7 +256,8 @@ public class ResponseWriter implements ContainerResponseWriter {
     }
 
     /**
-     * Provides response status captured when {@link #writeResponseStatusAndHeaders(long, org.glassfish.jersey.server.ContainerResponse)} has been invoked.
+     * Provides response status captured when {@link #writeResponseStatusAndHeaders(long, org.glassfish.jersey.server.ContainerResponse)}
+     * has been invoked.
      * The method will block if the write method has not been called yet.
      *
      * @return response status
@@ -244,10 +269,41 @@ public class ResponseWriter implements ContainerResponseWriter {
     private ContainerResponse getResponseContext() {
         try {
             return responseContext.get();
-        } catch (InterruptedException ex) {
+        } catch (InterruptedException | ExecutionException ex) {
             throw new ContainerException(ex);
-        } catch (ExecutionException ex) {
-            throw new ContainerException(ex);
+        }
+    }
+
+    private static class NonCloseableOutputStreamWrapper extends OutputStream {
+        private final OutputStream delegate;
+
+        public NonCloseableOutputStreamWrapper(OutputStream delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            delegate.write(b);
+        }
+
+        @Override
+        public void write(byte[] b) throws IOException {
+            delegate.write(b);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            delegate.write(b, off, len);
+        }
+
+        @Override
+        public void flush() throws IOException {
+            delegate.flush();
+        }
+
+        @Override
+        public void close() throws IOException {
+            // do not close - let the servlet container close the stream
         }
     }
 }

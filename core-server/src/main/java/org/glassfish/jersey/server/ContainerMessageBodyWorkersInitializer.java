@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2012 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -43,8 +43,9 @@ import javax.inject.Inject;
 import javax.inject.Provider;
 
 import org.glassfish.jersey.message.MessageBodyWorkers;
+import org.glassfish.jersey.server.internal.process.RequestProcessingContext;
 
-import com.google.common.base.Function;
+import jersey.repackaged.com.google.common.base.Function;
 
 /**
  * Function that can be put to an acceptor chain to properly initialize
@@ -53,7 +54,7 @@ import com.google.common.base.Function;
  * @author Marek Potociar (marek.potociar at oracle.com)
  */
 public class ContainerMessageBodyWorkersInitializer
-        implements Function<ContainerRequest, ContainerRequest> {
+        implements Function<RequestProcessingContext, RequestProcessingContext> {
     private final Provider<MessageBodyWorkers> workersFactory;
 
     /**
@@ -70,8 +71,8 @@ public class ContainerMessageBodyWorkersInitializer
 
 
     @Override
-    public ContainerRequest apply(ContainerRequest requestContext) {
-        requestContext.setWorkers(workersFactory.get());
+    public RequestProcessingContext apply(RequestProcessingContext requestContext) {
+        requestContext.request().setWorkers(workersFactory.get());
 
         return requestContext;
     }

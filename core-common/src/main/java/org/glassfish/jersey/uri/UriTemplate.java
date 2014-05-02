@@ -1,7 +1,7 @@
 /*
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
  *
- * Copyright (c) 2010-2013 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010-2014 Oracle and/or its affiliates. All rights reserved.
  *
  * The contents of this file are subject to the terms of either the GNU
  * General Public License Version 2 only ("GPL") or the Common Development
@@ -53,7 +53,7 @@ import java.util.regex.PatternSyntaxException;
 
 import org.glassfish.jersey.uri.internal.UriTemplateParser;
 
-import com.google.common.base.Preconditions;
+import jersey.repackaged.com.google.common.base.Preconditions;
 
 /**
  * A URI template.
@@ -812,56 +812,64 @@ public class UriTemplate {
             sb.append(':');
         }
 
-        if (userInfo != null || host != null || port != null) {
+        if (notEmpty(userInfo) || notEmpty(host) || notEmpty(port)) {
             sb.append("//");
 
-            if (userInfo != null && userInfo.length() > 0) {
+            if (notEmpty(userInfo)) {
                 offset = createURIComponent(UriComponent.Type.USER_INFO, userInfo, values,
                         offset, encode, mapValues, sb);
                 sb.append('@');
             }
 
-            if (host != null) {
+            if (notEmpty(host)) {
                 // TODO check IPv6 address
                 offset = createURIComponent(UriComponent.Type.HOST, host, values,
                         offset, encode, mapValues, sb);
             }
 
-            if (port != null && port.length() > 0) {
+            if (notEmpty(port)) {
                 sb.append(':');
                 offset = createURIComponent(UriComponent.Type.PORT, port, values,
                         offset, false, mapValues, sb);
             }
-        } else if (authority != null) {
+        } else if (notEmpty(authority)) {
             sb.append("//");
 
             offset = createURIComponent(UriComponent.Type.AUTHORITY, authority, values,
                     offset, encode, mapValues, sb);
         }
 
-        if (path != null && path.length() > 0) {
-            if (sb.length() > 0 && path.charAt(0) != '/') {
-                sb.append("/");
+        if (notEmpty(path) || notEmpty(query) || notEmpty(fragment)) {
+            // make sure we append at least the root path if only query or fragment is present
+            if (sb.length() > 0 && (path == null || path.isEmpty() || path.charAt(0) != '/')) {
+                sb.append('/');
             }
-            // path template values are treated as path segments unless encodeSlashInPath is false.
-            UriComponent.Type t = (encodeSlashInPath) ? UriComponent.Type.PATH_SEGMENT : UriComponent.Type.PATH;
 
-            offset = createURIComponent(t, path, values,
-                    offset, encode, mapValues, sb);
-        }
+            if (notEmpty(path)) {
+                // path template values are treated as path segments unless encodeSlashInPath is false.
+                UriComponent.Type t = (encodeSlashInPath) ? UriComponent.Type.PATH_SEGMENT : UriComponent.Type.PATH;
 
-        if (query != null && query.length() > 0) {
-            sb.append('?');
-            offset = createURIComponent(UriComponent.Type.QUERY_PARAM, query, values,
-                    offset, encode, mapValues, sb);
-        }
+                offset = createURIComponent(t, path, values,
+                        offset, encode, mapValues, sb);
+            }
 
-        if (fragment != null && fragment.length() > 0) {
-            sb.append('#');
-            createURIComponent(UriComponent.Type.FRAGMENT, fragment, values,
-                    offset, encode, mapValues, sb);
+            if (notEmpty(query)) {
+                sb.append('?');
+                offset = createURIComponent(UriComponent.Type.QUERY_PARAM, query, values,
+                        offset, encode, mapValues, sb);
+            }
+
+            if (notEmpty(fragment)) {
+                sb.append('#');
+                createURIComponent(UriComponent.Type.FRAGMENT, fragment, values,
+                        offset, encode, mapValues, sb);
+            }
         }
         return sb.toString();
+    }
+
+    private static boolean notEmpty(String string) {
+        return string != null && !string.isEmpty();
     }
 
     @SuppressWarnings("unchecked")
